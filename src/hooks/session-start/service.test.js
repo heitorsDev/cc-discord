@@ -105,3 +105,29 @@ test("handleSessionStart accepts an injected now() for deterministic timestamps"
     });
   });
 });
+
+test("handleSessionStart writes nothing when config.enabled is false", async () => {
+  await withConfigDir(JSON.stringify({ enabled: false }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const payload = { session_id: "sess-off", cwd: "/tmp" };
+
+      await handleSessionStart(payload, { stateDir, configPath });
+
+      const entries = await readdir(stateDir);
+      assert.deepEqual(entries, []);
+    });
+  });
+});
+
+test("handleSessionStart writes nothing when config fails closed (malformed JSON)", async () => {
+  await withConfigDir("{not json", async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const payload = { session_id: "sess-bad", cwd: "/tmp" };
+
+      await handleSessionStart(payload, { stateDir, configPath });
+
+      const entries = await readdir(stateDir);
+      assert.deepEqual(entries, []);
+    });
+  });
+});
