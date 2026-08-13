@@ -6,6 +6,22 @@ export const HOOK_EVENTS = Object.freeze([
   { event: "SessionEnd", script: "session-end/hook.js" },
 ]);
 
+function buildGroup(event, commandBase) {
+  const script = HOOK_EVENTS.find((entry) => entry.event === event).script;
+  return {
+    hooks: [{ type: "command", command: `${commandBase}${script}` }],
+  };
+}
+
 export async function mergeHooks(settingsPath, options = {}) {
-  return { hooks: {} };
+  const { commandBase = "", dryRun = false } = options;
+  const settings = {};
+
+  settings.hooks = {};
+  for (const { event } of HOOK_EVENTS) {
+    settings.hooks[event] = [buildGroup(event, commandBase)];
+  }
+
+  if (dryRun) return settings;
+  return settings;
 }
