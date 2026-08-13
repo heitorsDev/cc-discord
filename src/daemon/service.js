@@ -5,7 +5,7 @@ import { readTranscript as defaultReadTranscript } from "../transcript/service.j
 import { buildActivity } from "../presence/service.js";
 import { connectToDiscord, closeSocket } from "../presence/controller.js";
 import { shouldPublish as defaultShouldPublish } from "./coalesce.js";
-import { acquireLock as defaultAcquireLock } from "./lock.js";
+import { acquireLock as defaultAcquireLock, resolveLockPath } from "./lock.js";
 import { watchStateDir as defaultWatchStateDir } from "./watch.js";
 
 function basenameOf(value) {
@@ -121,7 +121,7 @@ export async function runLoop(options) {
   const {
     stateDir,
     configPath,
-    lockPath,
+    lockPath = stateDir !== undefined ? resolveLockPath(stateDir) : undefined,
     gracePeriodMs = 5000,
     rateLimitMs = RATE_LIMIT_MS,
     connect = connectToDiscord,
