@@ -1,0 +1,11 @@
+{
+  "name": "cc-discord",
+  "owner": "heitorsDev",
+  "plugins": [
+    {
+      "name": "cc-discord",
+      "source": "./",
+      "description": "Publish the current Claude Code session as Discord Rich Presence."
+    }
+  ]
+}
