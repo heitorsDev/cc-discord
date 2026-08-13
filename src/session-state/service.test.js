@@ -4,7 +4,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeState, deleteState, listState } from "./service.js";
+import { writeState, deleteState, listState, selectActive } from "./service.js";
 
 test("writeState creates one file per session id", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-discord-state-"));
@@ -63,6 +63,34 @@ test("listState skips junk and unparseable JSON", async () => {
     const states = await listState(dir);
     const ids = states.map((s) => s.sessionId).sort();
     assert.deepEqual(ids, ["sess-a", "sess-b"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("selectActive returns most-recently-written and otherCount", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-state-"));
+  try {
+    await writeState("sess-a", { sessionId: "sess-a", cwd: "/a" }, dir);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await writeState("sess-b", { sessionId: "sess-b", cwd: "/b" }, dir);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await writeState("sess-c", { sessionId: "sess-c", cwd: "/c" }, dir);
+
+    const active = await selectActive(dir);
+    assert.equal(active.state.sessionId, "sess-c");
+    assert.equal(active.otherCount, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("selectActive over an empty directory returns a null-ish result", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-state-"));
+  try {
+    const active = await selectActive(dir);
+    assert.equal(active.state, null);
+    assert.equal(active.otherCount, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
