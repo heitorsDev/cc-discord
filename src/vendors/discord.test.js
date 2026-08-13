@@ -37,3 +37,9 @@ test("decodeFrame returns null on truncated frame", () => {
   const frame = encodeFrame(1, "hi");
   assert.equal(decodeFrame(frame.subarray(0, frame.length - 1)), null);
 });
+
+test("decodeFrame returns null on declared length exceeding buffer", () => {
+  const frame = encodeFrame(1, "hi");
+  frame.writeUInt32LE(999, 4);
+  assert.equal(decodeFrame(frame), null);
+});
