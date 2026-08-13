@@ -81,3 +81,14 @@ test("readTranscript ignores unknown entry types", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("readTranscript skips unparseable lines", async () => {
+  const { dir, target } = await copyFixtureTo("malformed-lines.jsonl");
+  try {
+    const result = await readTranscript(target);
+    assert.equal(result.title, "Adding Discord presence");
+    assert.equal(result.latestPrompt, "ship it");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
