@@ -11,6 +11,20 @@ function basenameOf(value) {
   return idx === -1 ? value : value.slice(idx + 1);
 }
 
+export function toActivityState(state, transcript) {
+  return {
+    title: transcript.title,
+    project: basenameOf(state.cwd),
+    model: state.model ?? null,
+    startedAt: state.startedAt,
+    turns: state.turns ?? null,
+    lastPrompt: transcript.latestPrompt,
+    gitBranch: null,
+    lastActivityAt: state.lastActivityAt,
+    offline: false
+  };
+}
+
 export async function runTick(options) {
   const {
     stateDir,
@@ -50,18 +64,7 @@ export async function runTick(options) {
   }
 
   const transcript = await readTranscript(state.transcriptPath);
-  const built = {
-    title: transcript.title,
-    project: basenameOf(state.cwd),
-    model: state.model ?? null,
-    startedAt: state.startedAt,
-    turns: state.turns ?? null,
-    lastPrompt: transcript.latestPrompt,
-    gitBranch: null,
-    lastActivityAt: state.lastActivityAt,
-    offline: false
-  };
-
+  const built = toActivityState(state, transcript);
   const activity = buildActivity(config, built, { now: now() });
   const nextPublishAt = lastPublishAt + rateLimitMs;
 
