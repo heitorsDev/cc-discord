@@ -98,3 +98,33 @@ test("loadConfig fails closed when the file is not a JSON object", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("loadConfig flags appIdMissing when discord.appId is empty", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(configPath, JSON.stringify({ discord: { appId: "" } }));
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.appIdMissing, true);
+    assert.equal(result.failedClosed, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig flags appIdMissing when discord is omitted entirely", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(configPath, JSON.stringify({ enabled: true }));
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.appIdMissing, true);
+    assert.equal(result.failedClosed, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
