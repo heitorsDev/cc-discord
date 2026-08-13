@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runTick } from "./service.js";
+import { runTick, runLoop } from "./service.js";
 import { RATE_LIMIT_MS } from "../vendors/discord.js";
 
 const noopAsync = async () => undefined;
@@ -29,6 +29,20 @@ async function withConfigDir(contents, fn) {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+async function writeActiveSession(stateDir, sessionId, { cwd = "/home/user/project", turns = 3 } = {}) {
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(join(stateDir, `${sessionId}.json`), JSON.stringify({
+    sessionId,
+    cwd,
+    transcriptPath: "/tmp/transcript.jsonl",
+    startedAt: 1_700_000_000_000,
+    lastActivityAt: 1_700_000_000_000,
+    model: "claude-opus",
+    turns
+  }));
 }
 
 test("runTick returns shouldExit when no active session exists", async () => {
@@ -93,20 +107,6 @@ test("runTick returns appIdMissing error when config has no appId", async () => 
   });
 });
 
-async function writeActiveSession(stateDir, sessionId, { cwd = "/home/user/project", turns = 3 } = {}) {
-  const { writeFile, mkdir } = await import("node:fs/promises");
-  await mkdir(stateDir, { recursive: true });
-  await writeFile(join(stateDir, `${sessionId}.json`), JSON.stringify({
-    sessionId,
-    cwd,
-    transcriptPath: "/tmp/transcript.jsonl",
-    startedAt: 1_700_000_000_000,
-    lastActivityAt: 1_700_000_000_000,
-    model: "claude-opus",
-    turns
-  }));
-}
-
 test("runTick builds activity and publishes on active session", async () => {
   await withStateDir(async (stateDir) => {
     await writeActiveSession(stateDir, "sess-a");
@@ -141,6 +141,46 @@ test("runTick builds activity and publishes on active session", async () => {
       assert.notEqual(publishedActivity, null);
       assert.equal(publishedActivity.details, "Refactor daemon");
     });
+  });
+});
+
+test("runTick re-reads config on each call so live edits take effect", async () => {
+  await withStateDir(async (stateDir) => {
+    await writeActiveSession(stateDir, "sess-a");
+    const fakeSocket = { _isFake: true };
+    const configDir = await mkdtemp(join(tmpdir(), "cc-discord-reread-"));
+    const configPath = join(configDir, "config.json");
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(configPath, JSON.stringify({ discord: { appId: "11111" }, display: { details: "first" } }));
+    try {
+      const handshakeAppIds = [];
+      const tickOne = 1_700_000_000_000 + (RATE_LIMIT_MS + 100);
+      await runTick({
+        stateDir,
+        configPath,
+        lastPublishAt: 0,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async (_socket, appId) => { handshakeAppIds.push(appId); },
+        sendActivity: async () => {},
+        readTranscript: async () => ({ title: "T", latestPrompt: null }),
+        now: () => tickOne
+      });
+      await writeFile(configPath, JSON.stringify({ discord: { appId: "22222" }, display: { details: "second" } }));
+      const tickTwo = tickOne + RATE_LIMIT_MS + 100;
+      await runTick({
+        stateDir,
+        configPath,
+        lastPublishAt: tickOne,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async (_socket, appId) => { handshakeAppIds.push(appId); },
+        sendActivity: async () => {},
+        readTranscript: async () => ({ title: "T", latestPrompt: null }),
+        now: () => tickTwo
+      });
+      assert.deepEqual(handshakeAppIds, ["11111", "22222"]);
+    } finally {
+      await rm(configDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -243,42 +283,73 @@ test("runTick renders idle when inactivity exceeds idleAfter", async () => {
   });
 });
 
-test("runTick re-reads config on each call so live edits take effect", async () => {
-  await withStateDir(async (stateDir) => {
-    await writeActiveSession(stateDir, "sess-a");
+test("runLoop publishes once when a state file appears, exits after grace period when it disappears", async () => {
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  const stateDir = await mkdtemp(join(tmpdir(), "cc-discord-loop-state-"));
+  const configDir = await mkdtemp(join(tmpdir(), "cc-discord-loop-cfg-"));
+  const configPath = join(configDir, "config.json");
+  await writeFile(configPath, JSON.stringify({ discord: { appId: "12345" } }));
+  await mkdir(stateDir, { recursive: true });
+  try {
     const fakeSocket = { _isFake: true };
-    const configDir = await import("node:fs/promises").then((m) => m.mkdtemp(join(tmpdir(), "cc-discord-reread-")));
-    const configPath = join(configDir, "config.json");
-    const { writeFile } = await import("node:fs/promises");
-    await writeFile(configPath, JSON.stringify({ discord: { appId: "11111" }, display: { details: "first" } }));
-    try {
-      const handshakeAppIds = [];
-      const tickOne = 1_700_000_000_000 + (RATE_LIMIT_MS + 100);
-      await runTick({
-        stateDir,
-        configPath,
-        lastPublishAt: 0,
-        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
-        sendHandshake: async (_socket, appId) => { handshakeAppIds.push(appId); },
-        sendActivity: async () => {},
-        readTranscript: async () => ({ title: "T", latestPrompt: null }),
-        now: () => tickOne
-      });
-      await writeFile(configPath, JSON.stringify({ discord: { appId: "22222" }, display: { details: "second" } }));
-      const tickTwo = tickOne + RATE_LIMIT_MS + 100;
-      await runTick({
-        stateDir,
-        configPath,
-        lastPublishAt: tickOne,
-        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
-        sendHandshake: async (_socket, appId) => { handshakeAppIds.push(appId); },
-        sendActivity: async () => {},
-        readTranscript: async () => ({ title: "T", latestPrompt: null }),
-        now: () => tickTwo
-      });
-      assert.deepEqual(handshakeAppIds, ["11111", "22222"]);
-    } finally {
-      await rm(configDir, { recursive: true, force: true });
+    const handshakeAppIds = [];
+    let connected = false;
+    let sleepResolves = [];
+    const sleep = (ms) => new Promise((resolve) => {
+      sleepResolves.push({ ms, resolve });
+    });
+    const now = (() => {
+      let t = 1_700_000_000_000;
+      return () => {
+        t += 1;
+        return t;
+      };
+    })();
+    const loopPromise = runLoop({
+      stateDir,
+      configPath,
+      lockPath: join(stateDir, "cc-discord.lock"),
+      gracePeriodMs: 50,
+      rateLimitMs: 10,
+      connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+      sendHandshake: async (_socket, appId) => {
+        connected = true;
+        handshakeAppIds.push(appId);
+      },
+      sendActivity: async () => {},
+      watchStateDir: () => ({ close() {} }),
+      acquireLock: () => ({ release() {} }),
+      sleep,
+      now
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await writeFile(join(stateDir, "sess-a.json"), JSON.stringify({
+      sessionId: "sess-a",
+      cwd: "/home/user/project",
+      transcriptPath: "/tmp/t.jsonl",
+      startedAt: now(),
+      lastActivityAt: now(),
+      model: "claude-opus",
+      turns: 1
+    }));
+    for (let i = 0; i < 50; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (connected) break;
     }
-  });
+    assert.equal(connected, true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const { rm: rmFile } = await import("node:fs/promises");
+    await rmFile(join(stateDir, "sess-a.json"));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    while (sleepResolves.length > 0) {
+      const next = sleepResolves.shift();
+      next.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await loopPromise;
+    assert.ok(handshakeAppIds.length >= 1);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+    await rm(configDir, { recursive: true, force: true });
+  }
 });
