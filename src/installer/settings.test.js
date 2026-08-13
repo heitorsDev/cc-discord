@@ -167,3 +167,34 @@ test("mergeHooks atomic write: rename failure leaves the original intact", async
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("mergeHooks detects the marker across OS separators in command paths", async () => {
+  const { dir, settingsPath } = await tempSettingsPath();
+  try {
+    await writeJson(settingsPath, {
+      hooks: {
+        SessionStart: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "C:\\Users\\heitor\\AppData\\Local\\Temp\\cc-discord-install\\cc-discord\\hooks\\session-start\\hook.js",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const result = await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/" });
+
+    assert.equal(result.hooks.SessionStart.length, 1);
+    assert.ok(
+      result.hooks.SessionStart[0].hooks[0].command.includes(
+        "C:\\Users\\heitor\\AppData\\Local\\Temp\\cc-discord-install\\cc-discord\\hooks\\session-start\\hook.js"
+      )
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

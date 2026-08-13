@@ -74,11 +74,15 @@ function buildGroup(script, commandBase) {
   };
 }
 
+function commandHasMarker(command) {
+  if (typeof command !== "string") return false;
+  const normalized = command.replace(/\\/g, "/");
+  return normalized.includes(HOOK_MARKER);
+}
+
 function groupHasMarker(group) {
   if (!group || !Array.isArray(group.hooks)) return false;
-  return group.hooks.some(
-    (hook) => hook && typeof hook.command === "string" && hook.command.includes(HOOK_MARKER)
-  );
+  return group.hooks.some((hook) => hook && commandHasMarker(hook.command));
 }
 
 function arrayHasMarker(array) {
