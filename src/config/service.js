@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -41,7 +42,30 @@ export function resolveConfigPath() {
   return join(configHome, "cc-discord", "config.json");
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepClone(value) {
+  if (Array.isArray(value)) return value.map(deepClone);
+  if (isPlainObject(value)) {
+    const out = {};
+    for (const key of Object.keys(value)) out[key] = deepClone(value[key]);
+    return out;
+  }
+  return value;
+}
+
 export async function loadConfig(configPath = resolveConfigPath()) {
-  void configPath;
+  let raw;
+  try {
+    raw = await readFile(configPath, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return { config: deepClone(DEFAULT_CONFIG), appIdMissing: true, failedClosed: false };
+    }
+    throw err;
+  }
+  void raw;
   throw new Error("loadConfig not implemented");
 }
