@@ -144,6 +144,105 @@ test("runTick builds activity and publishes on active session", async () => {
   });
 });
 
+test("runTick reports otherCount when multiple sessions exist", async () => {
+  await withStateDir(async (stateDir) => {
+    await writeActiveSession(stateDir, "sess-a", { turns: 1 });
+    const older = 1_700_000_000_000 - 60_000;
+    const newer = 1_700_000_000_000;
+    const { writeFile, utimes, mkdir } = await import("node:fs/promises");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(join(stateDir, "sess-b.json"), JSON.stringify({
+      sessionId: "sess-b",
+      cwd: "/home/user/older",
+      transcriptPath: "/tmp/t-b.jsonl",
+      startedAt: older,
+      lastActivityAt: older,
+      model: "claude-opus",
+      turns: 2
+    }));
+    await utimes(join(stateDir, "sess-b.json"), new Date(older / 1000), new Date(older / 1000));
+    await utimes(join(stateDir, "sess-a.json"), new Date(newer / 1000), new Date(newer / 1000));
+    await withConfigDir(JSON.stringify({ discord: { appId: "12345" } }), async (configPath) => {
+      const fakeSocket = { _isFake: true };
+      let publishedTitle = null;
+      const result = await runTick({
+        stateDir,
+        configPath,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async () => {},
+        sendActivity: async (_socket, activity) => { publishedTitle = activity.details; },
+        readTranscript: async () => ({ title: "Most recent", latestPrompt: null }),
+        now: () => 1_700_000_000_000 + RATE_LIMIT_MS + 100
+      });
+      assert.equal(result.activeSession, "sess-a");
+      assert.equal(result.otherCount, 1);
+      assert.equal(publishedTitle, "Most recent");
+    });
+  });
+});
+
+test("runTick reads transcript here, not in hooks", async () => {
+  await withStateDir(async (stateDir) => {
+    await writeActiveSession(stateDir, "sess-a");
+    await withConfigDir(JSON.stringify({ discord: { appId: "12345" } }), async (configPath) => {
+      let transcriptPath = null;
+      const fakeSocket = { _isFake: true };
+      const result = await runTick({
+        stateDir,
+        configPath,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async () => {},
+        sendActivity: async () => {},
+        readTranscript: async (injectedPath) => {
+          transcriptPath = injectedPath;
+          return { title: "Read here", latestPrompt: "prompt text" };
+        },
+        now: () => 1_700_000_000_000 + RATE_LIMIT_MS + 100
+      });
+      assert.equal(transcriptPath, "/tmp/transcript.jsonl");
+      assert.equal(result.activity.details, "Read here");
+    });
+  });
+});
+
+test("runTick renders idle when inactivity exceeds idleAfter", async () => {
+  await withStateDir(async (stateDir) => {
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    await mkdir(stateDir, { recursive: true });
+    const startedAt = 1_700_000_000_000;
+    const lastActivityAt = startedAt;
+    await writeFile(join(stateDir, "sess-a.json"), JSON.stringify({
+      sessionId: "sess-a",
+      cwd: "/home/user/project",
+      transcriptPath: "/tmp/t.jsonl",
+      startedAt,
+      lastActivityAt,
+      model: "claude-opus",
+      turns: 1
+    }));
+    await withConfigDir(JSON.stringify({
+      discord: { appId: "12345" },
+      display: { idleAfter: "1s", idle: "Idle" }
+    }), async (configPath) => {
+      const fakeSocket = { _isFake: true };
+      let published = null;
+      const result = await runTick({
+        stateDir,
+        configPath,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async () => {},
+        sendActivity: async (_socket, activity) => { published = activity; },
+        readTranscript: async () => ({ title: "T", latestPrompt: null }),
+        now: () => lastActivityAt + 60_000
+      });
+      assert.equal(result.shouldExit, false);
+      assert.equal(result.published, true);
+      assert.equal(published.details, "Idle");
+      assert.equal(published.state, "Idle");
+    });
+  });
+});
+
 test("runTick re-reads config on each call so live edits take effect", async () => {
   await withStateDir(async (stateDir) => {
     await writeActiveSession(stateDir, "sess-a");
