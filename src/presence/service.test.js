@@ -481,3 +481,123 @@ test("buildActivity renders empty string when all fields collapse", () => {
     state: ""
   });
 });
+
+test("buildActivity uses title alt when show is false, ignoring project", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: false, alt: "Hidden title" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "0" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Hidden title",
+    state: "opus · 3 · Help me with X"
+  });
+});
+
+test("buildActivity falls back to title alt when title and project are both missing", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "Untitled" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "0" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Untitled",
+    state: "opus · 3 · Help me with X"
+  });
+});
+
+test("buildActivity truncates lastPrompt to empty when maxLen is zero, collapsing via alt", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "Working on something" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "0" },
+      lastPrompt: { show: true,  alt: "", maxLen: 0 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · 3"
+  });
+});
+
+test("buildActivity does not truncate lastPrompt when show is false", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "Working on something" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "0" },
+      lastPrompt: { show: false, alt: "thinking...", maxLen: 3 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · 3 · thinking..."
+  });
+});
