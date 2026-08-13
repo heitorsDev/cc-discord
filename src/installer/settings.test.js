@@ -85,3 +85,50 @@ test("mergeHooks preserves unrelated hook entries and appends ours", async () =>
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("mergeHooks reads JSONC with line and block comments then writes plain JSON", async () => {
+  const { dir, settingsPath } = await tempSettingsPath();
+  try {
+    const source = [
+      "// my personal settings",
+      "{",
+      "  /* keep me */",
+      "  \"hooks\": {",
+      "    // keep this entry",
+      "    \"Stop\": [{\"hooks\":[{\"type\":\"command\",\"command\":\"/bin/stop\"}]}]",
+      "  }",
+      "  , \"theme\": \"dark\"",
+      "}",
+      "",
+    ].join("\n");
+    await writeFile(settingsPath, source);
+
+    const result = await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/", dryRun: true });
+
+    assert.equal(result.theme, "dark");
+    assert.equal(result.hooks.Stop.length, 1);
+    assert.equal(result.hooks.Stop[0].hooks[0].command, "/bin/stop");
+    assert.equal(result.hooks.SessionStart.length, 1);
+    assert.equal(result.hooks.UserPromptSubmit.length, 1);
+    assert.equal(result.hooks.SessionEnd.length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("mergeHooks does not strip comment-like sequences inside string values", async () => {
+  const { dir, settingsPath } = await tempSettingsPath();
+  try {
+    await writeJson(settingsPath, {
+      hooks: {
+        Stop: [{ hooks: [{ type: "command", command: "/bin/stop // not a comment" }] }],
+      },
+    });
+
+    const result = await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/", dryRun: true });
+
+    assert.equal(result.hooks.Stop[0].hooks[0].command, "/bin/stop // not a comment");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
