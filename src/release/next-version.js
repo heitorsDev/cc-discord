@@ -15,5 +15,7 @@ export function bumpVersion(currentVersion, bumpType) {
   const [major, minor, patch] = match.slice(1).map((segment) => Number(segment));
   if (major < 0 || minor < 0 || patch < 0) return null;
   if (bumpType === "patch") return `${major}.${minor}.${patch + 1}`;
+  if (bumpType === "minor") return `${major}.${minor + 1}.0`;
+  if (bumpType === "major") return `${major + 1}.0.0`;
   return null;
 }
