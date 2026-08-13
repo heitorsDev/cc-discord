@@ -1,3 +1,5 @@
+import { rename, readFile, rm, writeFile } from "node:fs/promises";
+
 export const HOOK_MARKER = "cc-discord/hooks/";
 
 export const HOOK_EVENTS = Object.freeze([
@@ -76,7 +78,6 @@ function isPlainObject(value) {
 }
 
 export async function readSettings(settingsPath) {
-  const { readFile } = await import("node:fs/promises");
   const raw = await readFile(settingsPath, "utf8");
   return parseSettings(raw);
 }
@@ -105,5 +106,18 @@ export async function mergeHooks(settingsPath, options = {}) {
   const merged = buildMergedSettings(existing, commandBase);
 
   if (dryRun) return merged;
+  await writeAtomicJson(settingsPath, merged);
   return merged;
+}
+
+async function writeAtomicJson(settingsPath, data) {
+  const tmpPath = `${settingsPath}.tmp`;
+  const body = `${JSON.stringify(data, null, 2)}\n`;
+  try {
+    await writeFile(tmpPath, body);
+    await rename(tmpPath, settingsPath);
+  } catch (err) {
+    await rm(tmpPath, { force: true }).catch(() => {});
+    throw err;
+  }
 }
