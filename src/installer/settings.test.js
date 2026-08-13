@@ -57,3 +57,31 @@ test("mergeHooks is idempotent when marker is already present", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("mergeHooks preserves unrelated hook entries and appends ours", async () => {
+  const { dir, settingsPath } = await tempSettingsPath();
+  try {
+    await writeJson(settingsPath, {
+      hooks: {
+        SessionStart: [
+          { hooks: [{ type: "command", command: "/usr/local/bin/other-tool/start.sh" }] },
+        ],
+        Stop: [
+          { hooks: [{ type: "command", command: "/usr/local/bin/other-tool/stop.sh" }] },
+        ],
+      },
+    });
+
+    const result = await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/" });
+
+    assert.equal(result.hooks.SessionStart.length, 2);
+    assert.equal(result.hooks.SessionStart[0].hooks[0].command, "/usr/local/bin/other-tool/start.sh");
+    assert.ok(result.hooks.SessionStart[1].hooks[0].command.includes(HOOK_MARKER));
+    assert.equal(result.hooks.SessionEnd.length, 1);
+    assert.equal(result.hooks.UserPromptSubmit.length, 1);
+    assert.equal(result.hooks.Stop.length, 1);
+    assert.equal(result.hooks.Stop[0].hooks[0].command, "/usr/local/bin/other-tool/stop.sh");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
