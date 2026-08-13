@@ -196,3 +196,29 @@ test("handleSessionStart does not spawn when an instance is already running (loc
     });
   });
 });
+
+test("handleSessionStart returns within latency budget when spawning the daemon", async () => {
+  await withConfigDir(JSON.stringify({ enabled: true }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const acquireLock = () => ({ release() {} });
+
+      const start = Date.now();
+      await handleSessionStart(
+        { session_id: "sess-fast", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+      const elapsed = Date.now() - start;
+
+      assert.equal(spawn.calls.length, 1);
+      assert.ok(elapsed < 50, `handleSessionStart should return under 50ms (was ${elapsed}ms)`);
+    });
+  });
+});
