@@ -726,3 +726,63 @@ test("buildActivity treats empty-string lastPrompt as missing", () => {
     state: "opus · 3 · thinking..."
   });
 });
+
+test("buildActivity collapses turns when show is false and alt is empty", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "Working on something" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: false, alt: "" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · Help me with X"
+  });
+});
+
+test("buildActivity collapses multiple adjacent fields in a single template", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "Working on something" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: "Help me with X",
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: " · Help me with X"
+  });
+});
