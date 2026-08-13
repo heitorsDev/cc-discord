@@ -47,3 +47,54 @@ test("loadConfig deep-merges partial user config over defaults", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("loadConfig fails closed on malformed JSON", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(configPath, "{not json");
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.failedClosed, true);
+    assert.equal(result.appIdMissing, true);
+    assert.equal(result.config.fields.title.show, false);
+    assert.equal(result.config.fields.title.alt, "Coding");
+    assert.equal(result.config.fields.project.show, false);
+    assert.equal(result.config.fields.project.alt, "a project");
+    assert.equal(result.config.fields.lastPrompt.show, false);
+    assert.equal(result.config.fields.lastPrompt.alt, "");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig fails closed when the file is empty", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(configPath, "");
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.failedClosed, true);
+    assert.equal(result.config.fields.title.alt, "Coding");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig fails closed when the file is not a JSON object", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(configPath, JSON.stringify(["not", "an", "object"]));
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.failedClosed, true);
+    assert.equal(result.config.fields.title.alt, "Coding");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
