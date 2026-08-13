@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULT_CONFIG } from "../config/service.js";
-import { buildActivity } from "./service.js";
+import { buildActivity, parseIdleAfter } from "./service.js";
 
 function makeConfig(overrides = {}) {
   const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -1178,4 +1178,30 @@ test("buildActivity: all placeholders collapse with non-empty separator template
     details: "",
     state: ""
   });
+});
+
+test("parseIdleAfter parses minute suffix", () => {
+  assert.equal(parseIdleAfter("5m"), 300000);
+});
+
+test("parseIdleAfter parses second suffix", () => {
+  assert.equal(parseIdleAfter("30s"), 30000);
+});
+
+test("parseIdleAfter parses hour suffix", () => {
+  assert.equal(parseIdleAfter("1h"), 3600000);
+});
+
+test("parseIdleAfter treats zero as disabled", () => {
+  assert.equal(parseIdleAfter("0"), 0);
+});
+
+test("parseIdleAfter treats empty string as disabled", () => {
+  assert.equal(parseIdleAfter(""), 0);
+});
+
+test("parseIdleAfter returns 0 for garbage input", () => {
+  assert.equal(parseIdleAfter("garbage"), 0);
+  assert.equal(parseIdleAfter("5x"), 0);
+  assert.equal(parseIdleAfter("abc"), 0);
 });
