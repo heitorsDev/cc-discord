@@ -70,3 +70,14 @@ test("readTranscript returns null latestPrompt when only title exists", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("readTranscript ignores unknown entry types", async () => {
+  const { dir, target } = await copyFixtureTo("unknown-entries.jsonl");
+  try {
+    const result = await readTranscript(target);
+    assert.equal(result.title, "Adding Discord presence");
+    assert.equal(result.latestPrompt, "ship it");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
