@@ -33,3 +33,14 @@ test("acquireLock returns null when the lock is already held", async () => {
     await first.release();
   });
 });
+
+test("release allows the lock to be acquired again", async () => {
+  await withLockDir(async (lockPath) => {
+    const first = acquireLock(lockPath);
+    assert.notEqual(first, null);
+    await first.release();
+    const second = acquireLock(lockPath);
+    assert.notEqual(second, null);
+    await second.release();
+  });
+});
