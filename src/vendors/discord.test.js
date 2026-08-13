@@ -32,3 +32,8 @@ test("encodeFrame → decodeFrame round-trips per opcode", () => {
     assert.deepEqual(Array.from(decoded.payload), Array.from(Buffer.from(payload, "utf8")));
   }
 });
+
+test("decodeFrame returns null on truncated frame", () => {
+  const frame = encodeFrame(1, "hi");
+  assert.equal(decodeFrame(frame.subarray(0, frame.length - 1)), null);
+});
