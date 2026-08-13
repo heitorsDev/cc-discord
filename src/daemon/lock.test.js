@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { acquireLock } from "./lock.js";
+import { acquireLock, resolveLockPath } from "./lock.js";
 
 async function withLockDir(fn) {
   const dir = await mkdtemp(join(tmpdir(), "cc-discord-lock-"));
@@ -14,6 +14,12 @@ async function withLockDir(fn) {
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+test("resolveLockPath places the lock file inside the state directory", () => {
+  const dir = join(tmpdir(), "cc-discord-state");
+  const path = resolveLockPath(dir);
+  assert.equal(path, join(dir, "cc-discord.lock"));
+});
 
 test("acquireLock returns a release object on first call", async () => {
   await withLockDir(async (lockPath) => {

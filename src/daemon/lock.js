@@ -1,4 +1,11 @@
 import { closeSync, openSync, unlinkSync, writeSync } from "node:fs";
+import { join } from "node:path";
+
+import { resolveStateDir } from "../session-state/service.js";
+
+export function resolveLockPath(stateDir = resolveStateDir()) {
+  return join(stateDir, "cc-discord.lock");
+}
 
 export function acquireLock(lockPath) {
   let fd;
