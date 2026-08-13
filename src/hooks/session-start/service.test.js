@@ -173,3 +173,26 @@ test("handleSessionStart spawns the daemon when no instance is running", async (
     });
   });
 });
+
+test("handleSessionStart does not spawn when an instance is already running (lock held)", async () => {
+  await withConfigDir(JSON.stringify({ enabled: true }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const acquireLock = () => null;
+
+      await handleSessionStart(
+        { session_id: "sess-skip", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+
+      assert.equal(spawn.calls.length, 0, "daemon running already — must not spawn");
+    });
+  });
+});
