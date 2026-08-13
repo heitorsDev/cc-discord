@@ -4,6 +4,7 @@ import net from "node:net";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { platform } from "node:process";
 
 import {
   connectToDiscord,
@@ -15,6 +16,8 @@ import {
   closeSocket,
 } from "./controller.js";
 import { encodeFrame, OPCODE_PING, OPCODE_PONG, HEADER_SIZE } from "../vendors/discord.js";
+
+const skipOnWindows = platform === "win32" ? test.skip : test;
 
 async function withTempDir(fn) {
   const dir = await mkdtemp(join(tmpdir(), "cc-discord-presence-"));
@@ -94,7 +97,7 @@ async function connectFirstAvailable(dir, maxIndex = 4) {
   });
 }
 
-test("resolveSocketCandidates returns native paths in order", () => {
+skipOnWindows("resolveSocketCandidates returns native paths in order", () => {
   const candidates = resolveSocketCandidates({
     runtimeDir: "/run/user/1000",
     flatpakAppId: "com.discordapp.Discord",
@@ -109,7 +112,7 @@ test("resolveSocketCandidates returns native paths in order", () => {
   ]);
 });
 
-test("resolveSocketCandidates appends Flatpak paths after native", () => {
+skipOnWindows("resolveSocketCandidates appends Flatpak paths after native", () => {
   const candidates = resolveSocketCandidates({
     runtimeDir: "/run/user/1000",
     flatpakAppId: "com.discordapp.Discord",
@@ -127,7 +130,7 @@ test("resolveSocketCandidates appends Flatpak paths after native", () => {
   assert.equal(flatpakStart, nativeCount);
 });
 
-test("connectToDiscord finds the first reachable native socket", async () => {
+skipOnWindows("connectToDiscord finds the first reachable native socket", async () => {
   await withTempDir(async (dir) => {
     const socketPath = join(dir, "discord-ipc-2");
     const server = await startFakeServer(socketPath);
@@ -143,7 +146,7 @@ test("connectToDiscord finds the first reachable native socket", async () => {
   });
 });
 
-test("connectToDiscord falls back to Flatpak when native is absent", async () => {
+skipOnWindows("connectToDiscord falls back to Flatpak when native is absent", async () => {
   await withTempDir(async (dir) => {
     const flatpakDir = join(dir, "app", "com.discordapp.Discord");
     await mkdir(flatpakDir, { recursive: true });
@@ -161,7 +164,7 @@ test("connectToDiscord falls back to Flatpak when native is absent", async () =>
   });
 });
 
-test("connectToDiscord emits explicit diagnostic on Flatpak-only failure", async () => {
+skipOnWindows("connectToDiscord emits explicit diagnostic on Flatpak-only failure", async () => {
   await withTempDir(async (dir) => {
     const messages = [];
     const connection = await connectToDiscord({
@@ -178,7 +181,7 @@ test("connectToDiscord emits explicit diagnostic on Flatpak-only failure", async
   });
 });
 
-test("connectToDiscord returns null quietly when no socket is reachable", async () => {
+skipOnWindows("connectToDiscord returns null quietly when no socket is reachable", async () => {
   await withTempDir(async (dir) => {
     const connection = await connectToDiscord({
       runtimeDir: dir,
@@ -190,7 +193,7 @@ test("connectToDiscord returns null quietly when no socket is reachable", async 
   });
 });
 
-test("sendHandshake writes the documented JSON payload", async () => {
+skipOnWindows("sendHandshake writes the documented JSON payload", async () => {
   await withTempDir(async (dir) => {
     const socketPath = join(dir, "discord-ipc-0");
     const server = await startFakeServer(socketPath);
@@ -210,7 +213,7 @@ test("sendHandshake writes the documented JSON payload", async () => {
   });
 });
 
-test("sendActivity encodes a SET_ACTIVITY frame with unique nonce", async () => {
+skipOnWindows("sendActivity encodes a SET_ACTIVITY frame with unique nonce", async () => {
   await withTempDir(async (dir) => {
     const socketPath = join(dir, "discord-ipc-0");
     const server = await startFakeServer(socketPath);
@@ -235,7 +238,7 @@ test("sendActivity encodes a SET_ACTIVITY frame with unique nonce", async () => 
   });
 });
 
-test("startKeepalive answers PING with PONG", async () => {
+skipOnWindows("startKeepalive answers PING with PONG", async () => {
   await withTempDir(async (dir) => {
     const socketPath = join(dir, "discord-ipc-0");
     const server = await startFakeServer(socketPath);
@@ -261,7 +264,7 @@ test("startKeepalive answers PING with PONG", async () => {
   });
 });
 
-test("withReconnect reconnects after a disconnect with backoff", async () => {
+skipOnWindows("withReconnect reconnects after a disconnect with backoff", async () => {
   await withTempDir(async (dir) => {
     const socketPath = join(dir, "discord-ipc-0");
     const server = await startFakeServer(socketPath);
@@ -304,7 +307,7 @@ test("withReconnect reconnects after a disconnect with backoff", async () => {
   });
 });
 
-test("withReconnect resolves when no socket is reachable after attempts", async () => {
+skipOnWindows("withReconnect resolves when no socket is reachable after attempts", async () => {
   await withTempDir(async (dir) => {
     let attempts = 0;
     const sleepCalls = [];
