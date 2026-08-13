@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { handleSessionStart } from "./service.js";
 import { resolveConfigPath } from "../../config/service.js";
 import { resolveStateDir } from "../../session-state/service.js";
+import { resolveDaemonScriptPath } from "./spawn-daemon.js";
 
 const isDirectInvocation = import.meta.url === pathToFileURL(process.argv[1]).href;
 
@@ -17,6 +18,7 @@ if (isDirectInvocation) {
   }
   await handleSessionStart(payload, {
     stateDir: resolveStateDir(),
-    configPath: resolveConfigPath()
+    configPath: resolveConfigPath(),
+    daemonScriptPath: resolveDaemonScriptPath()
   });
 }

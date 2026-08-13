@@ -131,3 +131,119 @@ test("handleSessionStart writes nothing when config fails closed (malformed JSON
     });
   });
 });
+
+function makeFakeSpawn() {
+  const calls = [];
+  function fakeSpawn(cmd, args, opts) {
+    calls.push({ cmd, args, opts });
+    return { unref() {} };
+  }
+  fakeSpawn.calls = calls;
+  return fakeSpawn;
+}
+
+test("handleSessionStart spawns the daemon when no instance is running", async () => {
+  await withConfigDir(JSON.stringify({ enabled: true }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const released = [];
+      const acquireLock = (lockPath) => {
+        released.push(lockPath);
+        return { release() { released.push("release"); } };
+      };
+
+      await handleSessionStart(
+        { session_id: "sess-spawn", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+
+      assert.equal(spawn.calls.length, 1);
+      assert.equal(spawn.calls[0].args[0], "/path/to/bin/cc-discord-daemon.js");
+      assert.equal(spawn.calls[0].opts.detached, true);
+      assert.equal(spawn.calls[0].opts.stdio, "ignore");
+      assert.equal(typeof spawn.calls[0].opts.env, "object");
+      assert.ok(released.includes("release"), "lock acquired by us must be released before spawn");
+    });
+  });
+});
+
+test("handleSessionStart does not spawn when an instance is already running (lock held)", async () => {
+  await withConfigDir(JSON.stringify({ enabled: true }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const acquireLock = () => null;
+
+      await handleSessionStart(
+        { session_id: "sess-skip", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+
+      assert.equal(spawn.calls.length, 0, "daemon running already — must not spawn");
+    });
+  });
+});
+
+test("handleSessionStart returns within latency budget when spawning the daemon", async () => {
+  await withConfigDir(JSON.stringify({ enabled: true }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const acquireLock = () => ({ release() {} });
+
+      const start = Date.now();
+      await handleSessionStart(
+        { session_id: "sess-fast", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+      const elapsed = Date.now() - start;
+
+      assert.equal(spawn.calls.length, 1);
+      assert.ok(elapsed < 50, `handleSessionStart should return under 50ms (was ${elapsed}ms)`);
+    });
+  });
+});
+
+test("handleSessionStart does not spawn when master switch is off", async () => {
+  await withConfigDir(JSON.stringify({ enabled: false }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const acquireLock = () => ({ release() {} });
+
+      await handleSessionStart(
+        { session_id: "sess-off", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+
+      assert.equal(spawn.calls.length, 0, "master switch off — must not spawn");
+      const entries = await readdir(stateDir).catch(() => []);
+      assert.deepEqual(entries, [], "master switch off — must not write state");
+    });
+  });
+});
