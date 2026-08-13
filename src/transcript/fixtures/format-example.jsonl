@@ -1,0 +1,8 @@
+{"type":"user-message","id":"msg-1","text":"help me wire cc-discord to a Discord application"}
+{"type":"current-message-pointer","messageId":"msg-1"}
+{"type":"title","text":"Adding Discord presence"}
+{"type":"user-message","id":"msg-2","text":"ship it"}
+{"type":"current-message-pointer","messageId":"msg-2"}
+{"type":"tool-call","id":"tool-1","name":"Bash","input":"npm install"}
+{"type":"assistant-message","id":"asst-1","text":"installed"}
+{"type":"current-message-pointer","messageId":"msg-2"}
