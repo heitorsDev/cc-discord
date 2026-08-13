@@ -1,5 +1,7 @@
 const PLACEHOLDER_RE = /\{([a-zA-Z][a-zA-Z0-9]*)\}/g;
 
+const TEMPLATE_FIELDS = ["title", "project", "model", "turns", "lastPrompt", "gitBranch"];
+
 function isMissing(value) {
   if (value === null || value === undefined) return true;
   if (typeof value === "string" && value === "") return true;
@@ -92,14 +94,10 @@ function renderTemplate(template, values) {
 }
 
 export function buildActivity(config, state) {
-  const values = {
-    title: resolveField("title", config, state),
-    project: resolveField("project", config, state),
-    model: resolveField("model", config, state),
-    turns: resolveField("turns", config, state),
-    lastPrompt: resolveField("lastPrompt", config, state),
-    gitBranch: resolveField("gitBranch", config, state)
-  };
+  const values = {};
+  for (const fieldKey of TEMPLATE_FIELDS) {
+    values[fieldKey] = resolveField(fieldKey, config, state);
+  }
 
   const payload = {
     details: renderTemplate(config.display.details, values),
