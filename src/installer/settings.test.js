@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -128,6 +128,41 @@ test("mergeHooks does not strip comment-like sequences inside string values", as
     const result = await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/", dryRun: true });
 
     assert.equal(result.hooks.Stop[0].hooks[0].command, "/bin/stop // not a comment");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("mergeHooks atomic write: leaves no .tmp behind on success", async () => {
+  const { dir, settingsPath } = await tempSettingsPath();
+  try {
+    await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/" });
+
+    const entries = await readdir(dir);
+    assert.ok(
+      !entries.some((name) => name.endsWith(".tmp")),
+      `unexpected .tmp leftovers: ${entries.join(", ")}`
+    );
+    assert.ok(entries.includes("settings.json"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("mergeHooks atomic write: rename failure leaves the original intact", async () => {
+  const { dir, settingsPath } = await tempSettingsPath();
+  const tmpPath = `${settingsPath}.tmp`;
+  try {
+    await writeJson(settingsPath, { marker: "ORIGINAL", hooks: {} });
+    await mkdir(tmpPath);
+
+    await assert.rejects(() =>
+      mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/" })
+    );
+
+    const afterRaw = await readFile(settingsPath, "utf8");
+    const after = JSON.parse(afterRaw);
+    assert.equal(after.marker, "ORIGINAL");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
