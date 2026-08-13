@@ -37,3 +37,16 @@ watchTest("watchStateDir fires callback when a file is added", async () => {
     }
   });
 });
+
+watchTest("watchStateDir tolerates a missing directory by emitting via fallback", async () => {
+  const dir = join(tmpdir(), `cc-discord-watch-missing-${Date.now()}`);
+  let events = [];
+  const handle = watchStateDir(dir, (event) => events.push(event));
+  try {
+    await wait(1200);
+    assert.ok(events.length >= 1, "fallback should emit at least one event");
+  } finally {
+    handle.close();
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+});
