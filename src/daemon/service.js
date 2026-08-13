@@ -3,13 +3,19 @@ import { selectActive } from "../session-state/service.js";
 import { loadConfig as defaultLoadConfig } from "../config/service.js";
 import { readTranscript as defaultReadTranscript } from "../transcript/service.js";
 import { buildActivity } from "../presence/service.js";
-import { connectToDiscord } from "../presence/controller.js";
+import { connectToDiscord, closeSocket } from "../presence/controller.js";
 import { shouldPublish as defaultShouldPublish } from "./coalesce.js";
+import { acquireLock as defaultAcquireLock } from "./lock.js";
+import { watchStateDir as defaultWatchStateDir } from "./watch.js";
 
 function basenameOf(value) {
   if (typeof value !== "string" || value === "") return null;
   const idx = value.lastIndexOf("/");
   return idx === -1 ? value : value.slice(idx + 1);
+}
+
+function defaultSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function toActivityState(state, transcript) {
@@ -95,8 +101,12 @@ export async function runTick(options) {
     };
   }
 
-  await sendHandshake(connection.socket, config.discord.appId);
-  await sendActivity(connection.socket, activity);
+  try {
+    await sendHandshake(connection.socket, config.discord.appId);
+    await sendActivity(connection.socket, activity);
+  } finally {
+    await closeSocket(connection.socket).catch(() => {});
+  }
 
   return {
     activity,
@@ -109,6 +119,81 @@ export async function runTick(options) {
 }
 
 export async function runLoop(options) {
-  void options;
-  return;
+  const {
+    stateDir,
+    configPath,
+    lockPath,
+    gracePeriodMs = 5000,
+    rateLimitMs = RATE_LIMIT_MS,
+    connect = connectToDiscord,
+    sendActivity,
+    sendHandshake,
+    readTranscript = defaultReadTranscript,
+    loadConfig = defaultLoadConfig,
+    shouldPublish = defaultShouldPublish,
+    acquireLock = defaultAcquireLock,
+    watchStateDir = defaultWatchStateDir,
+    sleep = defaultSleep,
+    now = () => Date.now()
+  } = options;
+
+  const lock = acquireLock(lockPath);
+  if (lock === null) {
+    console.warn("cc-discord daemon could not acquire lock; another instance is running.");
+    return;
+  }
+
+  const watcher = watchStateDir(stateDir, () => {});
+
+  try {
+    let lastPublishAt = 0;
+    let emptySince = null;
+
+    while (true) {
+      const result = await runTick({
+        stateDir,
+        configPath,
+        lastPublishAt,
+        rateLimitMs,
+        connect,
+        sendActivity,
+        sendHandshake,
+        readTranscript,
+        loadConfig,
+        shouldPublish,
+        now
+      });
+
+      if (result.error === "appIdMissing") {
+        console.error("cc-discord: discord.appId is missing in the config; exiting.");
+        return;
+      }
+
+      if (result.published) {
+        lastPublishAt = result.nextPublishAt ?? now();
+        emptySince = null;
+        await sleep(rateLimitMs);
+        continue;
+      }
+
+      if (result.shouldExit) {
+        if (emptySince === null) {
+          emptySince = now();
+          await sleep(Math.max(20, Math.min(gracePeriodMs, 100)));
+          continue;
+        }
+        if (now() - emptySince >= gracePeriodMs) {
+          return;
+        }
+        await sleep(Math.max(20, Math.min(gracePeriodMs - (now() - emptySince), 100)));
+        continue;
+      }
+
+      const waitMs = Math.max(20, (result.nextPublishAt ?? now()) - now());
+      await sleep(waitMs);
+    }
+  } finally {
+    watcher.close();
+    lock.release();
+  }
 }
