@@ -601,3 +601,128 @@ test("buildActivity does not truncate lastPrompt when show is false", () => {
     state: "opus · 3 · thinking..."
   });
 });
+
+test("buildActivity renders project and gitBranch placeholders", () => {
+  const config = makeConfig({
+    display: { details: "{project}", state: "on {gitBranch}", idle: "Idle", offline: "", idleAfter: "5m" }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "/home/user/some-project",
+    state: "on feat/foo"
+  });
+});
+
+test("buildActivity preserves leading literal text before a single placeholder", () => {
+  const config = makeConfig({
+    display: { details: "Working on {title}", state: "in {model}", idle: "Idle", offline: "", idleAfter: "5m" }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Working on Adding Discord presence",
+    state: "in opus"
+  });
+});
+
+test("buildActivity drops leading literal text when the first placeholder collapses", () => {
+  const config = makeConfig({
+    display: { details: "Working on {title}", state: "in {model}", idle: "Idle", offline: "", idleAfter: "5m" },
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "0" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "in opus"
+  });
+});
+
+test("buildActivity treats 0 turns as a meaningful value, not missing", () => {
+  const config = makeConfig();
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 0,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · 0 · Help me with X"
+  });
+});
+
+test("buildActivity treats empty-string lastPrompt as missing", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "Working on something" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "0" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · 3 · thinking..."
+  });
+});
