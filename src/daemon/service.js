@@ -143,7 +143,19 @@ export async function runLoop(options) {
     return;
   }
 
-  const watcher = watchStateDir(stateDir, () => {});
+  let wakeup;
+  let resolveWakeup = () => {};
+  const nextWakeup = () => {
+    wakeup = new Promise((resolve) => { resolveWakeup = resolve; });
+    return wakeup;
+  };
+  nextWakeup();
+
+  const watcher = watchStateDir(stateDir, () => {
+    resolveWakeup();
+  });
+
+  const interruptibleSleep = (ms) => Promise.race([sleep(ms), wakeup]);
 
   try {
     let lastPublishAt = 0;
@@ -172,25 +184,30 @@ export async function runLoop(options) {
       if (result.published) {
         lastPublishAt = result.nextPublishAt ?? now();
         emptySince = null;
-        await sleep(rateLimitMs);
+        nextWakeup();
+        await interruptibleSleep(rateLimitMs);
         continue;
       }
 
       if (result.shouldExit) {
         if (emptySince === null) {
           emptySince = now();
-          await sleep(Math.max(20, Math.min(gracePeriodMs, 100)));
+          nextWakeup();
+          await interruptibleSleep(Math.max(20, Math.min(gracePeriodMs, 100)));
           continue;
         }
         if (now() - emptySince >= gracePeriodMs) {
           return;
         }
-        await sleep(Math.max(20, Math.min(gracePeriodMs - (now() - emptySince), 100)));
+        const remaining = Math.max(20, gracePeriodMs - (now() - emptySince));
+        nextWakeup();
+        await interruptibleSleep(Math.min(remaining, 100));
         continue;
       }
 
       const waitMs = Math.max(20, (result.nextPublishAt ?? now()) - now());
-      await sleep(waitMs);
+      nextWakeup();
+      await interruptibleSleep(waitMs);
     }
   } finally {
     watcher.close();
