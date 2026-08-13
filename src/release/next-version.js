@@ -1,4 +1,8 @@
-export function bumpTypeFromBranch(_branchName) {
+export function bumpTypeFromBranch(branchName) {
+  if (typeof branchName !== "string") return null;
+  if (branchName.startsWith("fix/")) return "patch";
+  if (branchName.startsWith("feat/")) return "minor";
+  if (branchName.startsWith("release/")) return "major";
   return null;
 }
 
