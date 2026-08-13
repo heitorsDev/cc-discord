@@ -15,3 +15,13 @@ export function encodeFrame(opcode, payloadString) {
   buffer.write(payloadString, HEADER_SIZE);
   return buffer;
 }
+
+export function decodeFrame(buffer) {
+  if (buffer.length < HEADER_SIZE) return null;
+  const opcode = buffer.readUInt32LE(0);
+  const length = buffer.readUInt32LE(4);
+  if (!Number.isInteger(length) || length < 0) return null;
+  if (HEADER_SIZE + length > buffer.length) return null;
+  const payload = buffer.subarray(HEADER_SIZE, HEADER_SIZE + length);
+  return { opcode, payload, payloadString: payload.toString("utf8") };
+}
