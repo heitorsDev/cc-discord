@@ -8,6 +8,31 @@ function isMissing(value) {
   return false;
 }
 
+function isProjectBlocked(project, privacy) {
+  if (typeof project !== "string" || project === "") return false;
+  const mode = privacy?.mode ?? "allowlist";
+  if (mode === "denylist") {
+    const list = privacy.denylist ?? [];
+    if (list.length === 0) return false;
+    if (list.includes("*")) return false;
+    return list.some((entry) => project.includes(entry));
+  }
+  const list = privacy.allowlist ?? [];
+  if (list.length === 0) return true;
+  if (list.includes("*")) return false;
+  return !list.some((entry) => project.includes(entry));
+}
+
+function resolvePrivacyBlockedFields(privacy) {
+  const alt = privacy?.alt ?? {};
+  const values = {};
+  for (const fieldKey of TEMPLATE_FIELDS) {
+    const replacement = alt[fieldKey];
+    values[fieldKey] = typeof replacement === "string" && replacement !== "" ? replacement : "";
+  }
+  return values;
+}
+
 function altOrCollapse(field) {
   const alt = field.alt ?? "";
   return alt === "" ? "" : alt;
@@ -121,10 +146,15 @@ export function parseIdleAfter(value) {
 }
 
 export function buildActivity(config, state, options = {}) {
-  const values = {};
-  for (const fieldKey of TEMPLATE_FIELDS) {
-    values[fieldKey] = resolveField(fieldKey, config, state);
-  }
+  const values = isProjectBlocked(state.project, config.privacy)
+    ? resolvePrivacyBlockedFields(config.privacy)
+    : (() => {
+        const out = {};
+        for (const fieldKey of TEMPLATE_FIELDS) {
+          out[fieldKey] = resolveField(fieldKey, config, state);
+        }
+        return out;
+      })();
 
   const payload = {
     details: renderTemplate(config.display.details, values),
