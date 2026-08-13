@@ -1492,3 +1492,46 @@ test("buildActivity does not render idle when lastActivityAt is null", () => {
   assert.notEqual(payload.details, "Idle");
   assert.notEqual(payload.state, "Idle");
 });
+
+test("buildActivity returns null when offline is true and display.offline is empty", () => {
+  const config = makeConfig();
+  config.display.offline = "";
+  const state = {
+    title: "Some title",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: true
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload, null);
+});
+
+test("buildActivity renders display.offline on both fields when offline is true and display.offline is non-empty", () => {
+  const config = makeConfig();
+  config.display.offline = "Offline";
+  const state = {
+    title: "Some title",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: true
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Offline",
+    state: "Offline"
+  });
+});
