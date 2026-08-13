@@ -139,7 +139,52 @@ test("loadConfig clears appIdMissing when discord.appId is provided", async () =
 
     assert.equal(result.appIdMissing, false);
     assert.equal(result.failedClosed, false);
+    assert.equal(result.config.discId, undefined);
     assert.equal(result.config.discord.appId, "9876543210");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig ignores unknown top-level keys", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        enabled: true,
+        thisDoesNotExist: "ignored",
+        neitherDoesThis: { nested: true }
+      })
+    );
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.config.thisDoesNotExist, undefined);
+    assert.equal(result.config.neitherDoesThis, undefined);
+    assert.deepEqual(result.config, { ...DEFAULT_CONFIG, enabled: true });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig ignores unknown nested keys", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        discord: { appId: "1234", unexpected: "drop me" }
+      })
+    );
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.config.discord.unexpected, undefined);
+    assert.equal(result.config.discord.appId, "1234");
+    assert.equal(result.config.discord.largeImage, "claude_logo");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
