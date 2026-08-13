@@ -56,6 +56,21 @@ function deepClone(value) {
   return value;
 }
 
+function deepMerge(base, override) {
+  const out = deepClone(base);
+  for (const key of Object.keys(override)) {
+    if (!(key in out)) continue;
+    const baseVal = out[key];
+    const overVal = override[key];
+    if (isPlainObject(baseVal) && isPlainObject(overVal)) {
+      out[key] = deepMerge(baseVal, overVal);
+    } else {
+      out[key] = overVal;
+    }
+  }
+  return out;
+}
+
 export async function loadConfig(configPath = resolveConfigPath()) {
   let raw;
   try {
@@ -66,6 +81,15 @@ export async function loadConfig(configPath = resolveConfigPath()) {
     }
     throw err;
   }
-  void raw;
-  throw new Error("loadConfig not implemented");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("loadConfig partial-merge path not implemented");
+  }
+  if (!isPlainObject(parsed)) {
+    throw new Error("loadConfig non-object path not implemented");
+  }
+  const config = deepMerge(DEFAULT_CONFIG, parsed);
+  return { config, appIdMissing: !config.discord.appId, failedClosed: false };
 }
