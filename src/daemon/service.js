@@ -72,10 +72,9 @@ export async function runTick(options) {
   }
 
   const transcript = await readTranscript(state.transcriptPath);
-  const built = toActivityState(state, transcript);
-  const activity = buildActivity(config, built, { now: now() });
-
   const tickNow = now();
+  const built = toActivityState(state, transcript);
+  const activity = buildActivity(config, built, { now: tickNow });
   const coalesce = shouldPublish({ lastPublishAt, now: tickNow, rateLimitMs });
 
   if (!coalesce.shouldPublish) {

@@ -283,7 +283,7 @@ test("runTick renders idle when inactivity exceeds idleAfter", async () => {
   });
 });
 
-test("runLoop publishes once when a state file appears, exits after grace period when it disappears", async () => {
+test("runLoop publishes when a state file appears, exits after grace period when it disappears", async () => {
   const { writeFile, mkdir } = await import("node:fs/promises");
   const stateDir = await mkdtemp(join(tmpdir(), "cc-discord-loop-state-"));
   const configDir = await mkdtemp(join(tmpdir(), "cc-discord-loop-cfg-"));
@@ -293,61 +293,62 @@ test("runLoop publishes once when a state file appears, exits after grace period
   try {
     const fakeSocket = { _isFake: true };
     const handshakeAppIds = [];
-    let connected = false;
-    let sleepResolves = [];
-    const sleep = (ms) => new Promise((resolve) => {
-      sleepResolves.push({ ms, resolve });
-    });
-    const now = (() => {
-      let t = 1_700_000_000_000;
-      return () => {
-        t += 1;
-        return t;
-      };
-    })();
+    const publishedAt = [];
+    let loopStarted = false;
     const loopPromise = runLoop({
       stateDir,
       configPath,
       lockPath: join(stateDir, "cc-discord.lock"),
-      gracePeriodMs: 50,
-      rateLimitMs: 10,
+      gracePeriodMs: 100,
+      rateLimitMs: 20,
       connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
       sendHandshake: async (_socket, appId) => {
-        connected = true;
         handshakeAppIds.push(appId);
+        publishedAt.push(Date.now());
       },
       sendActivity: async () => {},
       watchStateDir: () => ({ close() {} }),
-      acquireLock: () => ({ release() {} }),
-      sleep,
-      now
+      acquireLock: () => {
+        loopStarted = true;
+        return { release() {} };
+      }
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(loopStarted, true, "loop should acquire lock at start");
+    assert.equal(handshakeAppIds.length, 0, "no publishes before state file exists");
     await writeFile(join(stateDir, "sess-a.json"), JSON.stringify({
       sessionId: "sess-a",
       cwd: "/home/user/project",
       transcriptPath: "/tmp/t.jsonl",
-      startedAt: now(),
-      lastActivityAt: now(),
+      startedAt: Date.now(),
+      lastActivityAt: Date.now(),
       model: "claude-opus",
       turns: 1
     }));
-    for (let i = 0; i < 50; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      if (connected) break;
+    for (let i = 0; i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (handshakeAppIds.length >= 1) break;
     }
-    assert.equal(connected, true);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(handshakeAppIds.length >= 1, "daemon should publish when state file appears");
+    const firstPublishAt = publishedAt[0];
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const intervals = [];
+    for (let i = 1; i < publishedAt.length; i++) {
+      intervals.push(publishedAt[i] - publishedAt[i - 1]);
+    }
+    for (const gap of intervals) {
+      assert.ok(gap >= 18, `coalescing: gap between publishes should respect rate limit, got ${gap}ms`);
+    }
     const { rm: rmFile } = await import("node:fs/promises");
     await rmFile(join(stateDir, "sess-a.json"));
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    while (sleepResolves.length > 0) {
-      const next = sleepResolves.shift();
-      next.resolve();
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    await loopPromise;
-    assert.ok(handshakeAppIds.length >= 1);
+    const start = Date.now();
+    await Promise.race([
+      loopPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("loop did not exit within 5s")), 5000))
+    ]);
+    const elapsed = Date.now() - start;
+    assert.ok(elapsed < 1000, `loop should exit promptly after grace period (was ${elapsed}ms)`);
+    void firstPublishAt;
   } finally {
     await rm(stateDir, { recursive: true, force: true });
     await rm(configDir, { recursive: true, force: true });
