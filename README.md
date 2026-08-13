@@ -14,9 +14,13 @@ hooks as thin stdin/stdout adapters. Spec: issue #1.
 curl -fsSL https://raw.githubusercontent.com/heitorsDev/cc-discord/main/install.sh | bash
 ```
 
-The installer writes three hook entries into `~/.claude/settings.json`. No
-npm, no `npx`. Re-running it is a no-op for entries whose command matches
-the install marker.
+The installer copies the runtime into `~/.claude/cc-discord/` and writes three
+hook entries into `~/.claude/settings.json`, each invoking the hook through the
+absolute path of the `node` binary used to install. No npm, no `npx`.
+
+Re-running the installer refreshes the copied files and rewrites its own hook
+entries in place — it never appends a duplicate, and hooks belonging to other
+tools are left untouched. Set `CC_DISCORD_INSTALL_ROOT` to install elsewhere.
 
 ## Discord application setup
 

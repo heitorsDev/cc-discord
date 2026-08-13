@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "description": "Publish the current Claude Code session as Discord Rich Presence.",
   "hooks": [
-    "./hooks/session-start/hook.js",
-    "./hooks/user-prompt-submit/hook.js",
-    "./hooks/session-end/hook.js"
+    "./src/hooks/session-start/hook.js",
+    "./src/hooks/user-prompt-submit/hook.js",
+    "./src/hooks/session-end/hook.js"
   ]
 }
