@@ -1,7 +1,20 @@
+import { loadConfig } from "../../config/service.js";
 import { writeState } from "../../session-state/service.js";
 
 export async function handleSessionStart(payload, options = {}) {
-  const { stateDir, now = () => Date.now() } = options;
+  const { stateDir, configPath, now = () => Date.now() } = options;
+
+  if (configPath !== undefined) {
+    let result;
+    try {
+      result = await loadConfig(configPath);
+    } catch {
+      return;
+    }
+    if (result.failedClosed) return;
+    if (result.config.enabled !== true) return;
+  }
+
   const sessionId = typeof payload?.session_id === "string" ? payload.session_id : null;
   if (sessionId === null) return;
 
