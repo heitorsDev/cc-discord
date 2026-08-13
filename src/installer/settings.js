@@ -4,11 +4,19 @@ import { rename, readFile, rm, writeFile } from "node:fs/promises";
 
 export const HOOK_MARKER = "cc-discord/hooks/";
 
+// Path shapes written by this and by earlier releases. Reruns must recognise
+// every one of them, otherwise an upgrade appends a second entry instead of
+// replacing the stale one.
+const LEGACY_HOOK_MARKERS = Object.freeze([HOOK_MARKER, "cc-discord/src/hooks/"]);
+
 const DEFAULT_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 
+export function resolveConfigHome() {
+  return process.env.CLAUDE_CONFIG_HOME ?? join(homedir(), ".claude");
+}
+
 export function resolveSettingsPath() {
-  const configHome = process.env.CLAUDE_CONFIG_HOME ?? join(homedir(), ".claude");
-  return join(configHome, "settings.json");
+  return join(resolveConfigHome(), "settings.json");
 }
 
 export function defaultSettingsPath() {
@@ -68,26 +76,38 @@ function parseSettings(raw) {
   return JSON.parse(stripped);
 }
 
-function buildGroup(script, commandBase) {
+/**
+ * Hook commands run through an explicit node binary rather than relying on the
+ * script's own shebang and executable bit: the hook shell does not inherit a
+ * version-manager PATH, and a bare script path fails with "permission denied".
+ */
+export function buildHookCommand(script, commandBase, nodePath) {
+  const scriptPath = `${commandBase}${script}`;
+  return nodePath ? `"${nodePath}" "${scriptPath}"` : `"${scriptPath}"`;
+}
+
+function buildGroup(script, commandBase, nodePath) {
   return {
-    hooks: [{ type: "command", command: `${commandBase}${script}` }],
+    hooks: [{ type: "command", command: buildHookCommand(script, commandBase, nodePath) }],
   };
 }
 
-function commandHasMarker(command) {
+function normalizePath(value) {
+  return value.replace(/\\/g, "/");
+}
+
+function commandHasMarker(command, commandBase) {
   if (typeof command !== "string") return false;
-  const normalized = command.replace(/\\/g, "/");
-  return normalized.includes(HOOK_MARKER);
+  const normalized = normalizePath(command);
+  // A custom install root need not contain "cc-discord" anywhere, so the
+  // current commandBase counts as a marker in its own right.
+  if (commandBase && normalized.includes(normalizePath(commandBase))) return true;
+  return LEGACY_HOOK_MARKERS.some((marker) => normalized.includes(marker));
 }
 
-function groupHasMarker(group) {
+function groupHasMarker(group, commandBase) {
   if (!group || !Array.isArray(group.hooks)) return false;
-  return group.hooks.some((hook) => hook && commandHasMarker(hook.command));
-}
-
-function arrayHasMarker(array) {
-  if (!Array.isArray(array)) return false;
-  return array.some(groupHasMarker);
+  return group.hooks.some((hook) => hook && commandHasMarker(hook.command, commandBase));
 }
 
 function isPlainObject(value) {
@@ -99,28 +119,28 @@ export async function readSettings(settingsPath) {
   return parseSettings(raw);
 }
 
-export function buildMergedSettings(existing, commandBase) {
+export function buildMergedSettings(existing, commandBase, nodePath) {
   const base = isPlainObject(existing) ? existing : {};
   const hooks = isPlainObject(base.hooks) ? { ...base.hooks } : {};
 
   for (const { event, script } of HOOK_EVENTS) {
     const existingArray = Array.isArray(hooks[event]) ? hooks[event] : [];
-    if (arrayHasMarker(existingArray)) continue;
-    hooks[event] = [...existingArray, buildGroup(script, commandBase)];
+    const withoutOurs = existingArray.filter((group) => !groupHasMarker(group, commandBase));
+    hooks[event] = [...withoutOurs, buildGroup(script, commandBase, nodePath)];
   }
 
   return { ...base, hooks };
 }
 
 export async function mergeHooks(settingsPath, options = {}) {
-  const { commandBase = "", dryRun = false } = options;
+  const { commandBase = "", nodePath, dryRun = false } = options;
   let existing = {};
   try {
     existing = await readSettings(settingsPath);
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
   }
-  const merged = buildMergedSettings(existing, commandBase);
+  const merged = buildMergedSettings(existing, commandBase, nodePath);
 
   if (dryRun) return merged;
   await writeAtomicJson(settingsPath, merged);

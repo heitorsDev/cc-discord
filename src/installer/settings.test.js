@@ -39,7 +39,7 @@ test("mergeHooks adds all three event entries to a fresh settings file", async (
   }
 });
 
-test("mergeHooks is idempotent when marker is already present", async () => {
+test("mergeHooks rewrites an existing marked entry instead of appending a second one", async () => {
   const { dir, settingsPath } = await tempSettingsPath();
   try {
     const existingCommand = "/home/user/.local/share/cc-discord/hooks/session-start/hook.js";
@@ -52,7 +52,10 @@ test("mergeHooks is idempotent when marker is already present", async () => {
     const result = await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/" });
 
     assert.equal(result.hooks.SessionStart.length, 1);
-    assert.equal(result.hooks.SessionStart[0].hooks[0].command, existingCommand);
+    assert.equal(
+      result.hooks.SessionStart[0].hooks[0].command,
+      '"/opt/cc-discord/hooks/session-start/hook.js"'
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -189,10 +192,9 @@ test("mergeHooks detects the marker across OS separators in command paths", asyn
     const result = await mergeHooks(settingsPath, { commandBase: "/opt/cc-discord/hooks/" });
 
     assert.equal(result.hooks.SessionStart.length, 1);
-    assert.ok(
-      result.hooks.SessionStart[0].hooks[0].command.includes(
-        "C:\\Users\\heitor\\AppData\\Local\\Temp\\cc-discord-install\\cc-discord\\hooks\\session-start\\hook.js"
-      )
+    assert.equal(
+      result.hooks.SessionStart[0].hooks[0].command,
+      '"/opt/cc-discord/hooks/session-start/hook.js"'
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
