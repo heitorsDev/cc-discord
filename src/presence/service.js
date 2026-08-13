@@ -108,7 +108,7 @@ function renderTemplate(template, values) {
   return out;
 }
 
-export function buildActivity(config, state) {
+export function buildActivity(config, state, options = {}) {
   const values = {};
   for (const fieldKey of TEMPLATE_FIELDS) {
     values[fieldKey] = resolveField(fieldKey, config, state);
