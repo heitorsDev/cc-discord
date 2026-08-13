@@ -1,3 +1,8 @@
 export function shouldPublish({ lastPublishAt, now, rateLimitMs }) {
-  return { shouldPublish: false, nextPublishAt: now };
+  const elapsed = now - lastPublishAt;
+  const nextPublishAt = lastPublishAt + rateLimitMs;
+  return {
+    shouldPublish: elapsed >= rateLimitMs,
+    nextPublishAt
+  };
 }

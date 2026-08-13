@@ -25,8 +25,9 @@ test("shouldPublish computes nextPublishAt as the next eligible publish time", (
   assert.equal(result.nextPublishAt, lastPublishAt + RATE_LIMIT_MS);
 });
 
-test("shouldPublish returns lastPublishAt + rateLimitMs when lastPublishAt is zero", () => {
-  const result = shouldPublish({ lastPublishAt: 0, now: 5_000, rateLimitMs: RATE_LIMIT_MS });
+test("shouldPublish returns true on the very first publish when lastPublishAt is zero", () => {
+  const now = 1_700_000_000_000;
+  const result = shouldPublish({ lastPublishAt: 0, now, rateLimitMs: RATE_LIMIT_MS });
   assert.equal(result.shouldPublish, true);
   assert.equal(result.nextPublishAt, RATE_LIMIT_MS);
 });
