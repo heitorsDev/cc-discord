@@ -1264,3 +1264,97 @@ test("buildActivity substitutes privacy.alt when project is blocked by allowlist
   assert.equal(payload.state.includes("blocked-project"), false);
   assert.equal(payload.state.includes("opus"), false);
 });
+
+test("buildActivity substitutes privacy.alt when project is matched by denylist", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "denylist",
+    allowlist: [],
+    denylist: ["client-work"],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  config.fields.title = { show: true, alt: "Working on something" };
+  config.fields.project = { show: true, alt: "a project" };
+  const state = {
+    title: "Should not leak",
+    project: "/home/u/client-work/secret",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Should not leak",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Should not leak"), false);
+  assert.equal(payload.details.includes("client-work"), false);
+  assert.equal(payload.details.includes("secret"), false);
+  assert.equal(payload.state.includes("opus"), false);
+});
+
+test("buildActivity privacy override wins even when field show is true", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["allowed-project"],
+    denylist: [],
+    alt: { title: "Privacy Title", project: "Privacy Project", lastPrompt: "Privacy Prompt" }
+  };
+  config.fields.title = { show: true, alt: "Field Alt Title" };
+  config.fields.project = { show: true, alt: "Field Alt Project" };
+  config.fields.lastPrompt = { show: true, alt: "Field Alt Prompt", maxLen: 60 };
+  const state = {
+    title: "Real Title",
+    project: "/home/u/blocked-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Real Prompt",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Privacy Title"), true);
+  assert.equal(payload.details.includes("Field Alt Title"), false);
+  assert.equal(payload.details.includes("Real Title"), false);
+  assert.equal(payload.details.includes("Privacy Project"), false);
+  assert.equal(payload.details.includes("Field Alt Project"), false);
+  assert.equal(payload.details.includes("Privacy Prompt"), false);
+  assert.equal(payload.details.includes("Field Alt Prompt"), false);
+  assert.equal(payload.details.includes("Real Prompt"), false);
+});
+
+test("buildActivity title falls back to privacy.alt.title when project is blocked and title is missing", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["allowed-project"],
+    denylist: [],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  config.display = { details: "{title}", state: "{title}", idle: "Idle", offline: "", idleAfter: "5m" };
+  const state = {
+    title: null,
+    project: "/home/u/blocked-project",
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: null,
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details, "Coding");
+  assert.equal(payload.state, "Coding");
+  assert.equal(payload.details.includes("blocked-project"), false);
+  assert.equal(payload.state.includes("blocked-project"), false);
+});
