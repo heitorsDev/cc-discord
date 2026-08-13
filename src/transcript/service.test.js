@@ -37,3 +37,14 @@ test("readTranscript extracts the title from a single title entry", async () => 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("readTranscript picks the last title when several exist", async () => {
+  const { dir, target } = await copyFixtureTo("multiple-titles.jsonl");
+  try {
+    const result = await readTranscript(target);
+    assert.equal(result.title, "Polishing Discord presence");
+    assert.equal(result.latestPrompt, null);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
