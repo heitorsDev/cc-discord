@@ -43,7 +43,8 @@ test("deleteState removes the file and tolerates absence", async () => {
     await deleteState("sess-a", dir);
     assert.deepEqual(await readdir(dir), []);
 
-    await deleteState("sess-a", dir);
+    const result = await deleteState("sess-a", dir);
+    assert.equal(result, null);
     assert.deepEqual(await readdir(dir), []);
   } finally {
     await rm(dir, { recursive: true, force: true });
