@@ -87,7 +87,7 @@ function renderTemplate(template, values) {
       lastKept = false;
     }
   }
-  if (lastKept) out += trailing;
+  if (tokens.length === 0 || lastKept) out += trailing;
   return out;
 }
 
