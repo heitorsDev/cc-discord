@@ -1,0 +1,4 @@
+{"type":"title","text":"Adding Discord presence"}
+{not valid json
+{"type":"user-message","id":"msg-1","text":"ship it"}
+{"type":"current-message-pointer","messageId":"msg-1"}
