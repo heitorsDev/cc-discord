@@ -222,3 +222,28 @@ test("handleSessionStart returns within latency budget when spawning the daemon"
     });
   });
 });
+
+test("handleSessionStart does not spawn when master switch is off", async () => {
+  await withConfigDir(JSON.stringify({ enabled: false }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const acquireLock = () => ({ release() {} });
+
+      await handleSessionStart(
+        { session_id: "sess-off", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+
+      assert.equal(spawn.calls.length, 0, "master switch off — must not spawn");
+      const entries = await readdir(stateDir).catch(() => []);
+      assert.deepEqual(entries, [], "master switch off — must not write state");
+    });
+  });
+});
