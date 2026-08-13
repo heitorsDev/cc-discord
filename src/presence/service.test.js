@@ -1399,3 +1399,96 @@ test("buildActivity returns generic text on a fail-closed config from loadConfig
   assert.equal(payload.state.includes("secret-project"), false);
   assert.equal(payload.state.includes("Real prompt body"), false);
 });
+
+test("buildActivity renders display.idle when lastActivityAt is older than idleAfter", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "5m";
+  const now = 1_700_000_000_000;
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: now - (6 * 60 * 1000),
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now });
+
+  assert.deepEqual(payload, {
+    details: "Idle",
+    state: "Idle"
+  });
+});
+
+test("buildActivity does not render idle when lastActivityAt is recent", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "5m";
+  const now = 1_700_000_000_000;
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: now - (60 * 1000),
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now });
+
+  assert.notEqual(payload.details, "Idle");
+  assert.notEqual(payload.state, "Idle");
+});
+
+test("buildActivity does not render idle when idleAfter is 0", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "0";
+  const now = 1_700_000_000_000;
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: now - (60 * 60 * 1000),
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now });
+
+  assert.notEqual(payload.details, "Idle");
+  assert.notEqual(payload.state, "Idle");
+});
+
+test("buildActivity does not render idle when lastActivityAt is null", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "5m";
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now: 1_700_000_000_000 });
+
+  assert.notEqual(payload.details, "Idle");
+  assert.notEqual(payload.state, "Idle");
+});
