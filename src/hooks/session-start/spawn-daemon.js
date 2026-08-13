@@ -1,5 +1,13 @@
 import { spawn as defaultSpawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { acquireLock as defaultAcquireLock, resolveLockPath as defaultResolveLockPath } from "../../daemon/lock.js";
+
+export function resolveDaemonScriptPath() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return join(here, "..", "..", "..", "bin", "cc-discord-daemon.js");
+}
 
 export function maybeStartDaemon(options = {}) {
   const {
