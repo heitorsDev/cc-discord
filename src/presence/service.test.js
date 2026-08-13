@@ -6,6 +6,7 @@ import { buildActivity } from "./service.js";
 
 function makeConfig(overrides = {}) {
   const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  config.discord = { appId: "", largeImage: "", smallImage: "" };
   config.fields.title = { show: true, alt: "Working on something" };
   config.fields.project = { show: true, alt: "a project" };
   config.fields.model = { show: true, alt: "Claude Code" };
@@ -74,7 +75,7 @@ test("buildActivity uses alt when show is false", () => {
 test("buildActivity uses alt when data is missing", () => {
   const config = makeConfig();
   const state = {
-    title: null,
+    title: "Adding Discord presence",
     project: "/home/user/some-project",
     model: null,
     startedAt: null,
@@ -86,7 +87,7 @@ test("buildActivity uses alt when data is missing", () => {
   const payload = buildActivity(config, state);
 
   assert.deepEqual(payload, {
-    details: "Working on something",
+    details: "Adding Discord presence",
     state: "Claude Code · 0 · thinking..."
   });
 });
@@ -334,5 +335,149 @@ test("discord.smallImage set maps to assets.small_image", () => {
     details: "Adding Discord presence",
     state: "opus · 3 · Help me with X",
     assets: { large_image: "claude_logo", small_image: "branch_icon" }
+  });
+});
+
+test("buildActivity renders template with no placeholders as literal text", () => {
+  const config = makeConfig({
+    display: { details: "Fixed message", state: "Another fixed message", idle: "Idle", offline: "", idleAfter: "5m" }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Fixed message",
+    state: "Another fixed message"
+  });
+});
+
+test("buildActivity treats unknown placeholder as collapsing", () => {
+  const config = makeConfig({
+    display: { details: "{title} ({unknown})", state: "{model}", idle: "Idle", offline: "", idleAfter: "5m" }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus"
+  });
+});
+
+test("buildActivity omits timestamps when startedAt is zero", () => {
+  const config = makeConfig();
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: 0,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.timestamps, undefined);
+});
+
+test("buildActivity omits timestamps when startedAt is negative", () => {
+  const config = makeConfig();
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: -1,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.timestamps, undefined);
+});
+
+test("buildActivity omits timestamps when startedAt is a float", () => {
+  const config = makeConfig();
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: 1691846400.5,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.timestamps, undefined);
+});
+
+test("buildActivity omits assets when both images are empty", () => {
+  const config = makeConfig({
+    discord: { appId: "1234", largeImage: "", smallImage: "" }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.assets, undefined);
+});
+
+test("buildActivity renders empty string when all fields collapse", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: null,
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: ""
   });
 });
