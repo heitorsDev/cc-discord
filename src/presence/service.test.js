@@ -786,3 +786,64 @@ test("buildActivity collapses multiple adjacent fields in a single template", ()
     state: " · Help me with X"
   });
 });
+
+test("buildActivity uses turns alt when show is false even with data present", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "Working on something" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: false, alt: "many" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · many · Help me with X"
+  });
+});
+
+test("buildActivity uses gitBranch alt when show is false even with data present", () => {
+  const config = makeConfig({
+    display: { details: "{title}", state: "on {gitBranch}", idle: "Idle", offline: "", idleAfter: "5m" },
+    fields: {
+      title:      { show: true,  alt: "Working on something" },
+      project:    { show: true,  alt: "a project" },
+      model:      { show: true,  alt: "Claude Code" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "0" },
+      lastPrompt: { show: true,  alt: "thinking...", maxLen: 60 },
+      gitBranch:  { show: false, alt: "a branch" }
+    }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "on a branch"
+  });
+});
