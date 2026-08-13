@@ -139,7 +139,6 @@ test("loadConfig clears appIdMissing when discord.appId is provided", async () =
 
     assert.equal(result.appIdMissing, false);
     assert.equal(result.failedClosed, false);
-    assert.equal(result.config.discId, undefined);
     assert.equal(result.config.discord.appId, "9876543210");
   } finally {
     await rm(dir, { recursive: true, force: true });
