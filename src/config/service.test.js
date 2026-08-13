@@ -128,3 +128,19 @@ test("loadConfig flags appIdMissing when discord is omitted entirely", async () 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("loadConfig clears appIdMissing when discord.appId is provided", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-discord-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    await writeFile(configPath, JSON.stringify({ discord: { appId: "9876543210" } }));
+
+    const result = await loadConfig(configPath);
+
+    assert.equal(result.appIdMissing, false);
+    assert.equal(result.failedClosed, false);
+    assert.equal(result.config.discord.appId, "9876543210");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
