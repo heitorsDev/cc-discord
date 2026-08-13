@@ -1205,3 +1205,62 @@ test("parseIdleAfter returns 0 for garbage input", () => {
   assert.equal(parseIdleAfter("5x"), 0);
   assert.equal(parseIdleAfter("abc"), 0);
 });
+
+test("buildActivity publishes real values when privacy.allowlist is [*]", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["*"],
+    denylist: [],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · 3 · Help me with X"
+  });
+});
+
+test("buildActivity substitutes privacy.alt when project is blocked by allowlist", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["allowed-project"],
+    denylist: [],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  config.fields.title = { show: true, alt: "Working on something" };
+  config.fields.project = { show: true, alt: "a project" };
+  const state = {
+    title: "Should not leak",
+    project: "/home/u/blocked-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Should not leak",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Should not leak"), false);
+  assert.equal(payload.details.includes("blocked-project"), false);
+  assert.equal(payload.state.includes("Should not leak"), false);
+  assert.equal(payload.state.includes("blocked-project"), false);
+  assert.equal(payload.state.includes("opus"), false);
+});
