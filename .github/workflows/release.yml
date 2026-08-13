@@ -1,0 +1,63 @@
+name: release
+
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      github.event.pull_request.merged == true
+      && github.event.pull_request.base.ref == 'main'
+      && (
+        startsWith(github.event.pull_request.head.ref, 'fix/')
+        || startsWith(github.event.pull_request.head.ref, 'feat/')
+        || startsWith(github.event.pull_request.head.ref, 'release/')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve current and next versions
+        id: next-version
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          RAW_TAG="$(git tag --list 'v*' --sort=-v:refname | head -n 1 || true)"
+          if [ -z "${RAW_TAG:-}" ]; then
+            CURRENT_VERSION="0.0.0"
+          else
+            CURRENT_VERSION="${RAW_TAG#v}"
+          fi
+          echo "Current version: ${CURRENT_VERSION}"
+          if ! NEW_VERSION="$(node bin/next-version.js "${CURRENT_VERSION}" "${HEAD_BRANCH}")"; then
+            echo "::debug::next-version CLI rejected branch '${HEAD_BRANCH}' from '${CURRENT_VERSION}'"
+            exit 0
+          fi
+          if [ -z "${NEW_VERSION}" ]; then
+            echo "::debug::next-version CLI returned empty for branch '${HEAD_BRANCH}' from '${CURRENT_VERSION}'"
+            exit 0
+          fi
+          echo "version=${NEW_VERSION}" >> "${GITHUB_OUTPUT}"
+      - name: Tag and push
+        if: steps.next-version.outputs.version
+        env:
+          NEW_VERSION: ${{ steps.next-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git tag "v${NEW_VERSION}"
+          git push origin "v${NEW_VERSION}"
+      - name: Create GitHub Release
+        if: steps.next-version.outputs.version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.next-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "v${NEW_VERSION}" --generate-notes --title "v${NEW_VERSION}"
