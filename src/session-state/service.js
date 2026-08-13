@@ -53,3 +53,34 @@ export async function listState(stateDir = resolveStateDir()) {
   );
   return states.filter((s) => s !== null);
 }
+
+export async function selectActive(stateDir = resolveStateDir()) {
+  const entries = await readdir(stateDir).catch(() => []);
+  const candidates = (
+    await Promise.all(
+      entries
+        .filter((name) => name.endsWith(".json"))
+        .map(async (name) => {
+          const path = join(stateDir, name);
+          const raw = await readFile(path, "utf8").catch(() => null);
+          if (raw === null) return null;
+          let parsed;
+          try {
+            parsed = JSON.parse(raw);
+          } catch {
+            return null;
+          }
+          if (!parsed || typeof parsed !== "object" || typeof parsed.sessionId !== "string") return null;
+          const stats = await stat(path).catch(() => null);
+          if (!stats) return null;
+          return { state: parsed, mtime: stats.mtimeMs };
+        })
+    )
+  ).filter((c) => c !== null);
+
+  if (candidates.length === 0) return { state: null, otherCount: 0 };
+
+  candidates.sort((a, b) => b.mtime - a.mtime);
+  const [head, ...rest] = candidates;
+  return { state: head.state, otherCount: rest.length };
+}
