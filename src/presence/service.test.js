@@ -22,6 +22,22 @@ function makeConfig(overrides = {}) {
   return config;
 }
 
+function makeFailClosedConfig() {
+  const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  config.discord = { appId: "", largeImage: "", smallImage: "" };
+  config.display.details = "{title}";
+  config.display.state = "{model} · {turns} · {lastPrompt}";
+  config.display.idle = "Idle";
+  config.display.offline = "";
+  config.display.idleAfter = "5m";
+  for (const [fieldKey, altValue] of Object.entries(config.privacy.alt)) {
+    if (config.fields[fieldKey]) {
+      config.fields[fieldKey] = { ...config.fields[fieldKey], show: false, alt: altValue };
+    }
+  }
+  return config;
+}
+
 test("buildActivity renders details and state templates with placeholders", () => {
   const config = makeConfig();
   const state = {
@@ -1357,4 +1373,29 @@ test("buildActivity title falls back to privacy.alt.title when project is blocke
   assert.equal(payload.state, "Coding");
   assert.equal(payload.details.includes("blocked-project"), false);
   assert.equal(payload.state.includes("blocked-project"), false);
+});
+
+test("buildActivity returns generic text on a fail-closed config from loadConfig", () => {
+  const config = makeFailClosedConfig();
+  const state = {
+    title: "Real session title",
+    project: "/home/u/client-work/secret-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Real prompt body",
+    gitBranch: "feat/secret",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Real session title"), false);
+  assert.equal(payload.details.includes("client-work"), false);
+  assert.equal(payload.details.includes("secret-project"), false);
+  assert.equal(payload.state.includes("Real session title"), false);
+  assert.equal(payload.state.includes("client-work"), false);
+  assert.equal(payload.state.includes("secret-project"), false);
+  assert.equal(payload.state.includes("Real prompt body"), false);
 });
