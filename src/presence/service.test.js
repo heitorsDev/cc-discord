@@ -783,7 +783,7 @@ test("buildActivity collapses multiple adjacent fields in a single template", ()
 
   assert.deepEqual(payload, {
     details: "Adding Discord presence",
-    state: " · Help me with X"
+    state: "Help me with X"
   });
 });
 
@@ -869,5 +869,313 @@ test("buildActivity produces a complete payload with templates, elapsed, and ass
     state: "opus · 3 · Help me with X",
     timestamps: { start: 1691846400 },
     assets: { large_image: "claude_logo", small_image: "branch_icon" }
+  });
+});
+
+test("renderTemplate: leading placeholder collapses and second is live", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: null,
+    gitBranch: null
+  };
+
+  const collapsed = buildActivity(config, state);
+
+  const payload = buildActivity({
+    ...config,
+    fields: {
+      ...config.fields,
+      model: { show: true, alt: "A" }
+    }
+  }, state);
+
+  assert.equal(payload.details, "");
+  assert.equal(payload.state, "A");
+  assert.equal(collapsed.state, "");
+});
+
+test("buildActivity: leading placeholder collapses with second live, no orphaned separator", () => {
+  const config = makeConfig({
+    display: { details: "{model} · {lastPrompt}", state: "{model} · {lastPrompt}", idle: "Idle", offline: "", idleAfter: "5m" },
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: "Help me with X",
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Help me with X",
+    state: "Help me with X"
+  });
+});
+
+test("buildActivity: collapsed first, live middle, collapsed last yields only middle", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: "y",
+    lastPrompt: null,
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "y"
+  });
+});
+
+test("buildActivity: collapsed first, collapsed middle, live last yields only last", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: "z",
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "z"
+  });
+});
+
+test("buildActivity: live first, collapsed middle, live last keeps separator around collapse", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: "A",
+    startedAt: null,
+    turns: null,
+    lastPrompt: "C",
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "A · C"
+  });
+});
+
+test("buildActivity: live first, collapsed middle, collapsed last yields only first", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: "A",
+    startedAt: null,
+    turns: null,
+    lastPrompt: null,
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "A"
+  });
+});
+
+test("buildActivity: collapsed first, live middle, collapsed last yields only middle", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: "B",
+    lastPrompt: null,
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "B"
+  });
+});
+
+test("buildActivity: collapsed first, live middle, live last yields middle and last joined", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: "B",
+    lastPrompt: "C",
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "B · C"
+  });
+});
+
+test("buildActivity: live first, live middle, collapsed last drops trailing separator", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: "A",
+    startedAt: null,
+    turns: "B",
+    lastPrompt: null,
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: "A · B"
+  });
+});
+
+test("buildActivity: all placeholders collapse with non-empty separator template renders empty string", () => {
+  const config = makeConfig({
+    fields: {
+      title:      { show: true,  alt: "" },
+      project:    { show: true,  alt: "" },
+      model:      { show: true,  alt: "" },
+      elapsed:    { show: true,  alt: "" },
+      turns:      { show: true,  alt: "" },
+      lastPrompt: { show: true,  alt: "", maxLen: 60 },
+      gitBranch:  { show: true,  alt: "" }
+    }
+  });
+  const state = {
+    title: null,
+    project: null,
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: null,
+    gitBranch: null
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "",
+    state: ""
   });
 });

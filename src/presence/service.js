@@ -75,21 +75,36 @@ function tokenize(template) {
 
 function renderTemplate(template, values) {
   const { tokens, trailing } = tokenize(template);
+  if (tokens.length === 0) return template;
+
+  const leadingLiteral = tokens[0].literalBefore;
+  const seps = tokens.slice(1).map((t) => t.literalBefore);
+
   let out = "";
   let lastKept = false;
-  for (const token of tokens) {
-    const raw = values[token.name];
-    const value = raw === undefined ? "" : raw;
-    const kept = value !== "";
-    if (kept) {
-      out += token.literalBefore;
-      out += value;
-      lastKept = true;
-    } else {
+  let anyPrevKept = false;
+  let pendingSep = "";
+
+  for (let i = 0; i < tokens.length; i++) {
+    const value = values[tokens[i].name] ?? "";
+    if (value === "") {
       lastKept = false;
+      pendingSep = seps[i] ?? "";
+      continue;
     }
+    if (lastKept) {
+      out += tokens[i].literalBefore + value;
+    } else if (anyPrevKept) {
+      out += pendingSep + value;
+    } else {
+      out += leadingLiteral + value;
+    }
+    pendingSep = "";
+    lastKept = true;
+    anyPrevKept = true;
   }
-  if (tokens.length === 0 || lastKept) out += trailing;
+
+  if (lastKept) out += trailing;
   return out;
 }
 
