@@ -91,3 +91,54 @@ test("runTick returns appIdMissing error when config has no appId", async () => 
     }
   });
 });
+
+async function writeActiveSession(stateDir, sessionId, { cwd = "/home/user/project", turns = 3 } = {}) {
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(join(stateDir, `${sessionId}.json`), JSON.stringify({
+    sessionId,
+    cwd,
+    transcriptPath: "/tmp/transcript.jsonl",
+    startedAt: 1_700_000_000_000,
+    lastActivityAt: 1_700_000_000_000,
+    model: "claude-opus",
+    turns
+  }));
+}
+
+test("runTick builds activity and publishes on active session", async () => {
+  await withStateDir(async (stateDir) => {
+    await writeActiveSession(stateDir, "sess-a");
+    await withConfigDir(JSON.stringify({ discord: { appId: "12345" } }), async (configPath) => {
+      let handshakeCalls = 0;
+      let sendActivityCalls = 0;
+      let publishedActivity = null;
+      const fakeSocket = { _isFake: true };
+      const result = await runTick({
+        stateDir,
+        configPath,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async (socket, appId) => {
+          handshakeCalls++;
+          assert.equal(socket, fakeSocket);
+          assert.equal(appId, "12345");
+        },
+        sendActivity: async (socket, activity) => {
+          sendActivityCalls++;
+          assert.equal(socket, fakeSocket);
+          publishedActivity = activity;
+        },
+        readTranscript: async () => ({ title: "Refactor daemon", latestPrompt: "ship it" }),
+        now: () => 1_700_000_000_000
+      });
+      assert.equal(result.shouldExit, false);
+      assert.equal(result.published, true);
+      assert.equal(result.activeSession, "sess-a");
+      assert.equal(result.otherCount, 0);
+      assert.equal(handshakeCalls, 1);
+      assert.equal(sendActivityCalls, 1);
+      assert.notEqual(publishedActivity, null);
+      assert.equal(publishedActivity.details, "Refactor daemon");
+    });
+  });
+});
