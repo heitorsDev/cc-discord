@@ -1,6 +1,19 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { rename, readFile, rm, writeFile } from "node:fs/promises";
 
 export const HOOK_MARKER = "cc-discord/hooks/";
+
+const DEFAULT_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
+
+export function resolveSettingsPath() {
+  const configHome = process.env.CLAUDE_CONFIG_HOME ?? join(homedir(), ".claude");
+  return join(configHome, "settings.json");
+}
+
+export function defaultSettingsPath() {
+  return DEFAULT_SETTINGS_PATH;
+}
 
 export const HOOK_EVENTS = Object.freeze([
   { event: "SessionStart", script: "session-start/hook.js" },
