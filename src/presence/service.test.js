@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULT_CONFIG } from "../config/service.js";
-import { buildActivity } from "./service.js";
+import { buildActivity, parseIdleAfter } from "./service.js";
 
 function makeConfig(overrides = {}) {
   const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -18,6 +18,22 @@ function makeConfig(overrides = {}) {
   config.display.state = "{model} · {turns} · {lastPrompt}";
   for (const [key, value] of Object.entries(overrides)) {
     config[key] = value;
+  }
+  return config;
+}
+
+function makeFailClosedConfig() {
+  const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  config.discord = { appId: "", largeImage: "", smallImage: "" };
+  config.display.details = "{title}";
+  config.display.state = "{model} · {turns} · {lastPrompt}";
+  config.display.idle = "Idle";
+  config.display.offline = "";
+  config.display.idleAfter = "5m";
+  for (const [fieldKey, altValue] of Object.entries(config.privacy.alt)) {
+    if (config.fields[fieldKey]) {
+      config.fields[fieldKey] = { ...config.fields[fieldKey], show: false, alt: altValue };
+    }
   }
   return config;
 }
@@ -1177,5 +1193,345 @@ test("buildActivity: all placeholders collapse with non-empty separator template
   assert.deepEqual(payload, {
     details: "",
     state: ""
+  });
+});
+
+test("parseIdleAfter parses minute suffix", () => {
+  assert.equal(parseIdleAfter("5m"), 300000);
+});
+
+test("parseIdleAfter parses second suffix", () => {
+  assert.equal(parseIdleAfter("30s"), 30000);
+});
+
+test("parseIdleAfter parses hour suffix", () => {
+  assert.equal(parseIdleAfter("1h"), 3600000);
+});
+
+test("parseIdleAfter treats zero as disabled", () => {
+  assert.equal(parseIdleAfter("0"), 0);
+});
+
+test("parseIdleAfter treats empty string as disabled", () => {
+  assert.equal(parseIdleAfter(""), 0);
+});
+
+test("parseIdleAfter returns 0 for garbage input", () => {
+  assert.equal(parseIdleAfter("garbage"), 0);
+  assert.equal(parseIdleAfter("5x"), 0);
+  assert.equal(parseIdleAfter("abc"), 0);
+});
+
+test("buildActivity publishes real values when privacy.allowlist is [*]", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["*"],
+    denylist: [],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · 3 · Help me with X"
+  });
+});
+
+test("buildActivity substitutes privacy.alt when project is blocked by allowlist", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["allowed-project"],
+    denylist: [],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  config.fields.title = { show: true, alt: "Working on something" };
+  config.fields.project = { show: true, alt: "a project" };
+  const state = {
+    title: "Should not leak",
+    project: "/home/u/blocked-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Should not leak",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Should not leak"), false);
+  assert.equal(payload.details.includes("blocked-project"), false);
+  assert.equal(payload.state.includes("Should not leak"), false);
+  assert.equal(payload.state.includes("blocked-project"), false);
+  assert.equal(payload.state.includes("opus"), false);
+});
+
+test("buildActivity substitutes privacy.alt when project is matched by denylist", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "denylist",
+    allowlist: [],
+    denylist: ["client-work"],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  config.fields.title = { show: true, alt: "Working on something" };
+  config.fields.project = { show: true, alt: "a project" };
+  const state = {
+    title: "Should not leak",
+    project: "/home/u/client-work/secret",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Should not leak",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Should not leak"), false);
+  assert.equal(payload.details.includes("client-work"), false);
+  assert.equal(payload.details.includes("secret"), false);
+  assert.equal(payload.state.includes("opus"), false);
+});
+
+test("buildActivity privacy override wins even when field show is true", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["allowed-project"],
+    denylist: [],
+    alt: { title: "Privacy Title", project: "Privacy Project", lastPrompt: "Privacy Prompt" }
+  };
+  config.fields.title = { show: true, alt: "Field Alt Title" };
+  config.fields.project = { show: true, alt: "Field Alt Project" };
+  config.fields.lastPrompt = { show: true, alt: "Field Alt Prompt", maxLen: 60 };
+  const state = {
+    title: "Real Title",
+    project: "/home/u/blocked-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Real Prompt",
+    gitBranch: "feat/foo",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Privacy Title"), true);
+  assert.equal(payload.details.includes("Field Alt Title"), false);
+  assert.equal(payload.details.includes("Real Title"), false);
+  assert.equal(payload.details.includes("Privacy Project"), false);
+  assert.equal(payload.details.includes("Field Alt Project"), false);
+  assert.equal(payload.details.includes("Privacy Prompt"), false);
+  assert.equal(payload.details.includes("Field Alt Prompt"), false);
+  assert.equal(payload.details.includes("Real Prompt"), false);
+});
+
+test("buildActivity title falls back to privacy.alt.title when project is blocked and title is missing", () => {
+  const config = makeConfig();
+  config.privacy = {
+    mode: "allowlist",
+    allowlist: ["allowed-project"],
+    denylist: [],
+    alt: { title: "Coding", project: "a project", lastPrompt: "" }
+  };
+  config.display = { details: "{title}", state: "{title}", idle: "Idle", offline: "", idleAfter: "5m" };
+  const state = {
+    title: null,
+    project: "/home/u/blocked-project",
+    model: null,
+    startedAt: null,
+    turns: null,
+    lastPrompt: null,
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details, "Coding");
+  assert.equal(payload.state, "Coding");
+  assert.equal(payload.details.includes("blocked-project"), false);
+  assert.equal(payload.state.includes("blocked-project"), false);
+});
+
+test("buildActivity returns generic text on a fail-closed config from loadConfig", () => {
+  const config = makeFailClosedConfig();
+  const state = {
+    title: "Real session title",
+    project: "/home/u/client-work/secret-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Real prompt body",
+    gitBranch: "feat/secret",
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload.details.includes("Real session title"), false);
+  assert.equal(payload.details.includes("client-work"), false);
+  assert.equal(payload.details.includes("secret-project"), false);
+  assert.equal(payload.state.includes("Real session title"), false);
+  assert.equal(payload.state.includes("client-work"), false);
+  assert.equal(payload.state.includes("secret-project"), false);
+  assert.equal(payload.state.includes("Real prompt body"), false);
+});
+
+test("buildActivity renders display.idle when lastActivityAt is older than idleAfter", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "5m";
+  const now = 1_700_000_000_000;
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: now - (6 * 60 * 1000),
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now });
+
+  assert.deepEqual(payload, {
+    details: "Idle",
+    state: "Idle"
+  });
+});
+
+test("buildActivity does not render idle when lastActivityAt is recent", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "5m";
+  const now = 1_700_000_000_000;
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: now - (60 * 1000),
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now });
+
+  assert.notEqual(payload.details, "Idle");
+  assert.notEqual(payload.state, "Idle");
+});
+
+test("buildActivity does not render idle when idleAfter is 0", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "0";
+  const now = 1_700_000_000_000;
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: now - (60 * 60 * 1000),
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now });
+
+  assert.notEqual(payload.details, "Idle");
+  assert.notEqual(payload.state, "Idle");
+});
+
+test("buildActivity does not render idle when lastActivityAt is null", () => {
+  const config = makeConfig();
+  config.display.idle = "Idle";
+  config.display.idleAfter = "5m";
+  const state = {
+    title: "Active session",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: false
+  };
+
+  const payload = buildActivity(config, state, { now: 1_700_000_000_000 });
+
+  assert.notEqual(payload.details, "Idle");
+  assert.notEqual(payload.state, "Idle");
+});
+
+test("buildActivity returns null when offline is true and display.offline is empty", () => {
+  const config = makeConfig();
+  config.display.offline = "";
+  const state = {
+    title: "Some title",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: true
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.equal(payload, null);
+});
+
+test("buildActivity renders display.offline on both fields when offline is true and display.offline is non-empty", () => {
+  const config = makeConfig();
+  config.display.offline = "Offline";
+  const state = {
+    title: "Some title",
+    project: "/home/u/some-project",
+    model: "opus",
+    startedAt: null,
+    turns: 3,
+    lastPrompt: "Help me",
+    gitBranch: null,
+    lastActivityAt: null,
+    offline: true
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Offline",
+    state: "Offline"
   });
 });
