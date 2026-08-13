@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runTick } from "./service.js";
+import { RATE_LIMIT_MS } from "../vendors/discord.js";
 
 const noopAsync = async () => undefined;
 const noConnect = async () => null;
@@ -140,5 +141,45 @@ test("runTick builds activity and publishes on active session", async () => {
       assert.notEqual(publishedActivity, null);
       assert.equal(publishedActivity.details, "Refactor daemon");
     });
+  });
+});
+
+test("runTick re-reads config on each call so live edits take effect", async () => {
+  await withStateDir(async (stateDir) => {
+    await writeActiveSession(stateDir, "sess-a");
+    const fakeSocket = { _isFake: true };
+    const configDir = await import("node:fs/promises").then((m) => m.mkdtemp(join(tmpdir(), "cc-discord-reread-")));
+    const configPath = join(configDir, "config.json");
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(configPath, JSON.stringify({ discord: { appId: "11111" }, display: { details: "first" } }));
+    try {
+      const handshakeAppIds = [];
+      const tickOne = 1_700_000_000_000 + (RATE_LIMIT_MS + 100);
+      await runTick({
+        stateDir,
+        configPath,
+        lastPublishAt: 0,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async (_socket, appId) => { handshakeAppIds.push(appId); },
+        sendActivity: async () => {},
+        readTranscript: async () => ({ title: "T", latestPrompt: null }),
+        now: () => tickOne
+      });
+      await writeFile(configPath, JSON.stringify({ discord: { appId: "22222" }, display: { details: "second" } }));
+      const tickTwo = tickOne + RATE_LIMIT_MS + 100;
+      await runTick({
+        stateDir,
+        configPath,
+        lastPublishAt: tickOne,
+        connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
+        sendHandshake: async (_socket, appId) => { handshakeAppIds.push(appId); },
+        sendActivity: async () => {},
+        readTranscript: async () => ({ title: "T", latestPrompt: null }),
+        now: () => tickTwo
+      });
+      assert.deepEqual(handshakeAppIds, ["11111", "22222"]);
+    } finally {
+      await rm(configDir, { recursive: true, force: true });
+    }
   });
 });
