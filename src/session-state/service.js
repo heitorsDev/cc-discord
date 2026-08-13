@@ -13,6 +13,34 @@ function stateFilePath(sessionId, stateDir) {
   return join(stateDir, stateFileName(sessionId));
 }
 
+function isValidState(value) {
+  return Boolean(value) && typeof value === "object" && typeof value.sessionId === "string";
+}
+
+async function readStateFile(name, stateDir) {
+  const path = join(stateDir, name);
+  const raw = await readFile(path, "utf8").catch(() => null);
+  if (raw === null) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isValidState(parsed)) return null;
+  const stats = await stat(path).catch(() => null);
+  if (!stats) return null;
+  return { state: parsed, mtimeMs: stats.mtimeMs };
+}
+
+async function readValidStates(stateDir) {
+  const entries = await readdir(stateDir).catch(() => []);
+  const candidates = await Promise.all(
+    entries.filter((name) => name.endsWith(".json")).map((name) => readStateFile(name, stateDir))
+  );
+  return candidates.filter((c) => c !== null);
+}
+
 export async function writeState(sessionId, state, stateDir = resolveStateDir()) {
   await mkdir(stateDir, { recursive: true });
   await writeFile(stateFilePath(sessionId, stateDir), JSON.stringify(state, null, 2));
@@ -35,52 +63,14 @@ export async function deleteState(sessionId, stateDir = resolveStateDir()) {
 }
 
 export async function listState(stateDir = resolveStateDir()) {
-  const entries = await readdir(stateDir).catch(() => []);
-  const states = await Promise.all(
-    entries
-      .filter((name) => name.endsWith(".json"))
-      .map(async (name) => {
-        const raw = await readFile(join(stateDir, name), "utf8").catch(() => null);
-        if (raw === null) return null;
-        try {
-          const parsed = JSON.parse(raw);
-          if (!parsed || typeof parsed !== "object" || typeof parsed.sessionId !== "string") return null;
-          return parsed;
-        } catch {
-          return null;
-        }
-      })
-  );
-  return states.filter((s) => s !== null);
+  const candidates = await readValidStates(stateDir);
+  return candidates.map((c) => c.state);
 }
 
 export async function selectActive(stateDir = resolveStateDir()) {
-  const entries = await readdir(stateDir).catch(() => []);
-  const candidates = (
-    await Promise.all(
-      entries
-        .filter((name) => name.endsWith(".json"))
-        .map(async (name) => {
-          const path = join(stateDir, name);
-          const raw = await readFile(path, "utf8").catch(() => null);
-          if (raw === null) return null;
-          let parsed;
-          try {
-            parsed = JSON.parse(raw);
-          } catch {
-            return null;
-          }
-          if (!parsed || typeof parsed !== "object" || typeof parsed.sessionId !== "string") return null;
-          const stats = await stat(path).catch(() => null);
-          if (!stats) return null;
-          return { state: parsed, mtime: stats.mtimeMs };
-        })
-    )
-  ).filter((c) => c !== null);
-
+  const candidates = await readValidStates(stateDir);
   if (candidates.length === 0) return { state: null, otherCount: 0 };
-
-  candidates.sort((a, b) => b.mtime - a.mtime);
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
   const [head, ...rest] = candidates;
   return { state: head.state, otherCount: rest.length };
 }
