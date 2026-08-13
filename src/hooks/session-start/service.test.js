@@ -131,3 +131,45 @@ test("handleSessionStart writes nothing when config fails closed (malformed JSON
     });
   });
 });
+
+function makeFakeSpawn() {
+  const calls = [];
+  function fakeSpawn(cmd, args, opts) {
+    calls.push({ cmd, args, opts });
+    return { unref() {} };
+  }
+  fakeSpawn.calls = calls;
+  return fakeSpawn;
+}
+
+test("handleSessionStart spawns the daemon when no instance is running", async () => {
+  await withConfigDir(JSON.stringify({ enabled: true }), async (configPath) => {
+    await withStateDir(async (stateDir) => {
+      const spawn = makeFakeSpawn();
+      const released = [];
+      const acquireLock = (lockPath) => {
+        released.push(lockPath);
+        return { release() { released.push("release"); } };
+      };
+
+      await handleSessionStart(
+        { session_id: "sess-spawn", cwd: "/tmp" },
+        {
+          stateDir,
+          configPath,
+          daemonScriptPath: "/path/to/bin/cc-discord-daemon.js",
+          acquireLock,
+          spawn,
+          env: {}
+        }
+      );
+
+      assert.equal(spawn.calls.length, 1);
+      assert.equal(spawn.calls[0].args[0], "/path/to/bin/cc-discord-daemon.js");
+      assert.equal(spawn.calls[0].opts.detached, true);
+      assert.equal(spawn.calls[0].opts.stdio, "ignore");
+      assert.equal(typeof spawn.calls[0].opts.env, "object");
+      assert.ok(released.includes("release"), "lock acquired by us must be released before spawn");
+    });
+  });
+});
