@@ -847,3 +847,27 @@ test("buildActivity uses gitBranch alt when show is false even with data present
     state: "on a branch"
   });
 });
+
+test("buildActivity produces a complete payload with templates, elapsed, and assets", () => {
+  const config = makeConfig({
+    discord: { appId: "1234", largeImage: "claude_logo", smallImage: "branch_icon" }
+  });
+  const state = {
+    title: "Adding Discord presence",
+    project: "/home/user/some-project",
+    model: "opus",
+    startedAt: 1691846400,
+    turns: 3,
+    lastPrompt: "Help me with X",
+    gitBranch: "feat/foo"
+  };
+
+  const payload = buildActivity(config, state);
+
+  assert.deepEqual(payload, {
+    details: "Adding Discord presence",
+    state: "opus · 3 · Help me with X",
+    timestamps: { start: 1691846400 },
+    assets: { large_image: "claude_logo", small_image: "branch_icon" }
+  });
+});
