@@ -108,6 +108,18 @@ function renderTemplate(template, values) {
   return out;
 }
 
+export function parseIdleAfter(value) {
+  if (typeof value !== "string") return 0;
+  const match = /^(\d+)([smh])$/.exec(value);
+  if (!match) return 0;
+  const n = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit === "s") return n * 1000;
+  if (unit === "m") return n * 60 * 1000;
+  if (unit === "h") return n * 60 * 60 * 1000;
+  return 0;
+}
+
 export function buildActivity(config, state, options = {}) {
   const values = {};
   for (const fieldKey of TEMPLATE_FIELDS) {
