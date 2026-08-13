@@ -1,8 +1,12 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
+// Must be absolute: hooks and the daemon run from different working
+// directories, and a relative path would give each of them its own state.
 export function resolveStateDir() {
-  return join(process.env.XDG_STATE_HOME ?? join(...["home", process.env.USER ?? "", ".local", "state"]), "cc-discord");
+  const stateHome = process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
+  return join(stateHome, "cc-discord");
 }
 
 function stateFileName(sessionId) {

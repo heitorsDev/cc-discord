@@ -1,10 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 
-import { writeState, deleteState, listState, selectActive } from "./service.js";
+import { writeState, deleteState, listState, selectActive, resolveStateDir } from "./service.js";
+
+test("resolveStateDir is absolute so hooks and the daemon agree on one location", () => {
+  const original = process.env.XDG_STATE_HOME;
+  try {
+    delete process.env.XDG_STATE_HOME;
+    const fallback = resolveStateDir();
+    assert.ok(isAbsolute(fallback), `expected an absolute path, got ${fallback}`);
+    assert.equal(fallback, join(homedir(), ".local", "state", "cc-discord"));
+
+    process.env.XDG_STATE_HOME = "/xdg/state";
+    assert.equal(resolveStateDir(), join("/xdg/state", "cc-discord"));
+  } finally {
+    if (original === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = original;
+  }
+});
 
 test("writeState creates one file per session id", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-discord-state-"));
