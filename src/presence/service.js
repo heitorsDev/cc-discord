@@ -146,6 +146,25 @@ export function parseIdleAfter(value) {
 }
 
 export function buildActivity(config, state, options = {}) {
+  if (state.offline === true) {
+    const offlineText = config.display.offline;
+    if (typeof offlineText !== "string" || offlineText === "") {
+      return null;
+    }
+    return { details: offlineText, state: offlineText };
+  }
+
+  const now = options.now ?? Date.now();
+  const idleAfterMs = parseIdleAfter(config.display.idleAfter);
+  if (
+    typeof state.lastActivityAt === "number" &&
+    idleAfterMs > 0 &&
+    now - state.lastActivityAt > idleAfterMs
+  ) {
+    const idleText = config.display.idle ?? "";
+    return { details: idleText, state: idleText };
+  }
+
   const values = isProjectBlocked(state.project, config.privacy)
     ? resolvePrivacyBlockedFields(config.privacy)
     : (() => {
