@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
 
 import * as hookModule from "./hook.js";
+import { spawnHook } from "../spawn-hook.js";
+
+const HOOK_DIR = import.meta.dirname;
 
 test("importing session-start hook.js does not execute its body", async () => {
   await import(`./hook.js?probe=${Date.now()}`);
@@ -13,40 +15,19 @@ test("importing session-start hook.js does not execute its body", async () => {
   assert.deepEqual(exportedKeys, []);
 });
 
-async function spawnHook(stdinPayload, env) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [join(import.meta.dirname, "hook.js")],
-      { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...env } }
-    );
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
-    if (stdinPayload !== undefined) {
-      child.stdin.end(stdinPayload);
-    } else {
-      child.stdin.end();
-    }
-  });
-}
-
 async function withTempDirs(fn) {
-  const stateDir = await mkdtemp(join(tmpdir(), "cc-discord-session-start-state-"));
-  const configDir = await mkdtemp(join(tmpdir(), "cc-discord-session-start-cfg-"));
+  const stateHome = await mkdtemp(join(tmpdir(), "cc-discord-session-start-state-"));
+  const configHome = await mkdtemp(join(tmpdir(), "cc-discord-session-start-cfg-"));
   try {
-    return await fn({ stateDir, configDir });
+    return await fn({ stateHome, configHome });
   } finally {
-    await rm(stateDir, { recursive: true, force: true });
-    await rm(configDir, { recursive: true, force: true });
+    await rm(stateHome, { recursive: true, force: true });
+    await rm(configHome, { recursive: true, force: true });
   }
 }
 
 test("session-start hook.js exits 0 and writes state when given a valid payload", async () => {
-  await withTempDirs(async ({ stateDir, configDir }) => {
+  await withTempDirs(async ({ stateHome, configHome }) => {
     const payload = JSON.stringify({
       session_id: "sess-spawn",
       cwd: "/tmp",
@@ -54,42 +35,54 @@ test("session-start hook.js exits 0 and writes state when given a valid payload"
       model: "opus"
     });
 
-    const result = await spawnHook(payload, {
-      XDG_STATE_HOME: stateDir,
-      XDG_CONFIG_HOME: configDir
-    });
+    const result = await spawnHook(
+      payload,
+      {
+        XDG_STATE_HOME: stateHome,
+        XDG_CONFIG_HOME: configHome
+      },
+      { hookDir: HOOK_DIR }
+    );
 
     assert.equal(result.code, 0);
     assert.equal(result.stdout, "");
-    const entries = await readdir(stateDir);
+    const entries = await readdir(join(stateHome, "cc-discord"));
     assert.deepEqual(entries, ["sess-spawn.json"]);
   });
 });
 
 test("session-start hook.js tolerates empty stdin without throwing", async () => {
-  await withTempDirs(async ({ stateDir, configDir }) => {
-    const result = await spawnHook("", {
-      XDG_STATE_HOME: stateDir,
-      XDG_CONFIG_HOME: configDir
-    });
+  await withTempDirs(async ({ stateHome, configHome }) => {
+    const result = await spawnHook(
+      "",
+      {
+        XDG_STATE_HOME: stateHome,
+        XDG_CONFIG_HOME: configHome
+      },
+      { hookDir: HOOK_DIR }
+    );
 
     assert.equal(result.code, 0);
     assert.equal(result.stdout, "");
-    const entries = await readdir(stateDir).catch(() => []);
+    const entries = await readdir(join(stateHome, "cc-discord")).catch(() => []);
     assert.deepEqual(entries, []);
   });
 });
 
 test("session-start hook.js tolerates malformed JSON stdin without throwing", async () => {
-  await withTempDirs(async ({ stateDir, configDir }) => {
-    const result = await spawnHook("{not json", {
-      XDG_STATE_HOME: stateDir,
-      XDG_CONFIG_HOME: configDir
-    });
+  await withTempDirs(async ({ stateHome, configHome }) => {
+    const result = await spawnHook(
+      "{not json",
+      {
+        XDG_STATE_HOME: stateHome,
+        XDG_CONFIG_HOME: configHome
+      },
+      { hookDir: HOOK_DIR }
+    );
 
     assert.equal(result.code, 0);
     assert.equal(result.stdout, "");
-    const entries = await readdir(stateDir).catch(() => []);
+    const entries = await readdir(join(stateHome, "cc-discord")).catch(() => []);
     assert.deepEqual(entries, []);
   });
 });
