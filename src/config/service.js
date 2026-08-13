@@ -71,6 +71,16 @@ function deepMerge(base, override) {
   return out;
 }
 
+function failClosedConfig() {
+  const config = deepClone(DEFAULT_CONFIG);
+  for (const [fieldKey, altValue] of Object.entries(config.privacy.alt)) {
+    if (config.fields[fieldKey]) {
+      config.fields[fieldKey] = { ...config.fields[fieldKey], show: false, alt: altValue };
+    }
+  }
+  return config;
+}
+
 export async function loadConfig(configPath = resolveConfigPath()) {
   let raw;
   try {
@@ -85,10 +95,10 @@ export async function loadConfig(configPath = resolveConfigPath()) {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("loadConfig partial-merge path not implemented");
+    return { config: failClosedConfig(), appIdMissing: true, failedClosed: true };
   }
   if (!isPlainObject(parsed)) {
-    throw new Error("loadConfig non-object path not implemented");
+    return { config: failClosedConfig(), appIdMissing: true, failedClosed: true };
   }
   const config = deepMerge(DEFAULT_CONFIG, parsed);
   return { config, appIdMissing: !config.discord.appId, failedClosed: false };
