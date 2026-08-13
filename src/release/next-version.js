@@ -6,6 +6,14 @@ export function bumpTypeFromBranch(branchName) {
   return null;
 }
 
-export function bumpVersion(_currentVersion, _bumpType) {
+const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
+
+export function bumpVersion(currentVersion, bumpType) {
+  if (typeof currentVersion !== "string") return null;
+  const match = SEMVER_PATTERN.exec(currentVersion);
+  if (!match) return null;
+  const [major, minor, patch] = match.slice(1).map((segment) => Number(segment));
+  if (major < 0 || minor < 0 || patch < 0) return null;
+  if (bumpType === "patch") return `${major}.${minor}.${patch + 1}`;
   return null;
 }
