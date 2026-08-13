@@ -23,3 +23,13 @@ test("acquireLock returns a release object on first call", async () => {
     await handle.release();
   });
 });
+
+test("acquireLock returns null when the lock is already held", async () => {
+  await withLockDir(async (lockPath) => {
+    const first = acquireLock(lockPath);
+    assert.notEqual(first, null);
+    const second = acquireLock(lockPath);
+    assert.equal(second, null);
+    await first.release();
+  });
+});
