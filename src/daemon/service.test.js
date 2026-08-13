@@ -51,3 +51,43 @@ test("runTick returns shouldExit when no active session exists", async () => {
     });
   });
 });
+
+test("runTick returns appIdMissing error when config has no appId", async () => {
+  await withStateDir(async (stateDir) => {
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(join(stateDir, "sess-a.json"), JSON.stringify({
+      sessionId: "sess-a",
+      cwd: "/home/user/project",
+      transcriptPath: "/tmp/transcript.jsonl",
+      startedAt: 1_700_000_000_000,
+      lastActivityAt: 1_700_000_000_000,
+      model: "claude-opus",
+      turns: 1
+    }));
+    const configDir = await import("node:fs/promises").then((m) => m.mkdtemp(join(tmpdir(), "cc-discord-appid-")));
+    const configPath = join(configDir, "config.json");
+    await writeFile(configPath, "{}");
+    try {
+      let sendActivityCalls = 0;
+      let handshakeCalls = 0;
+      const result = await runTick({
+        stateDir,
+        configPath,
+        connect: noConnect,
+        sendActivity: async () => { sendActivityCalls++; },
+        sendHandshake: async () => { handshakeCalls++; },
+        readTranscript: async () => ({ title: null, latestPrompt: null }),
+        now: () => 1_700_000_000_000
+      });
+      assert.equal(result.shouldExit, true);
+      assert.equal(result.error, "appIdMissing");
+      assert.equal(result.published, false);
+      assert.equal(result.activeSession, "sess-a");
+      assert.equal(sendActivityCalls, 0);
+      assert.equal(handshakeCalls, 0);
+    } finally {
+      await rm(configDir, { recursive: true, force: true });
+    }
+  });
+});
