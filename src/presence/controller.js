@@ -69,7 +69,6 @@ export async function connectToDiscord(options = {}) {
 
   const candidates = resolveSocketCandidates(options);
   let flatpakDirChecked = false;
-  let flatpakDirExisted = false;
 
   for (const candidate of candidates) {
     if (candidate.kind === "flatpak" && !flatpakDirChecked) {
@@ -77,7 +76,6 @@ export async function connectToDiscord(options = {}) {
       const flatpakDir = path.posix.dirname(candidate.path);
       try {
         await stat(flatpakDir);
-        flatpakDirExisted = true;
       } catch (err) {
         if (err.code === "ENOENT") {
           diagnostic(
@@ -89,7 +87,11 @@ export async function connectToDiscord(options = {}) {
     try {
       const socket = await socketFactory({ path: candidate.path, timeoutMs: probeTimeoutMs });
       return { socket, kind: candidate.kind, path: candidate.path };
-    } catch {}
+    } catch (err) {
+      if (err.code !== "ENOENT" && err.code !== "ECONNREFUSED") {
+        throw err;
+      }
+    }
   }
 
   debug("Discord IPC socket not reachable.");
@@ -217,28 +219,25 @@ export async function withReconnect(operation, options = {}) {
     console.debug(`Discord connected on attempt ${attempt} via ${connection.kind}`);
     backoff = startMs;
 
-    let opSettled = false;
-    const opResult = (async () => {
-      try {
-        await operation(connection.socket, connection);
-        opSettled = true;
-        return "done";
-      } catch (err) {
-        opSettled = true;
-        throw err;
-      }
-    })();
+    const opResult = operation(connection.socket, connection).then(
+      (value) => ({ kind: "done", value }),
+      (err) => ({ kind: "error", err })
+    );
 
     const closed = new Promise((resolve) => {
-      connection.socket.once("close", () => resolve("closed"));
-      connection.socket.once("error", () => resolve("closed"));
+      connection.socket.once("close", () => resolve({ kind: "closed" }));
+      connection.socket.once("error", () => resolve({ kind: "closed" }));
     });
 
     const winner = await Promise.race([opResult, closed]);
 
-    if (winner === "done") {
+    if (winner.kind === "done") {
       await closeSocket(connection.socket);
-      return;
+      return winner.value;
+    }
+    if (winner.kind === "error") {
+      closeSocket(connection.socket).catch(() => {});
+      throw winner.err;
     }
 
     closeSocket(connection.socket).catch(() => {});
