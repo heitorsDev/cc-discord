@@ -4,6 +4,7 @@ import { loadConfig as defaultLoadConfig } from "../config/service.js";
 import { readTranscript as defaultReadTranscript } from "../transcript/service.js";
 import { buildActivity } from "../presence/service.js";
 import { connectToDiscord } from "../presence/controller.js";
+import { shouldPublish as defaultShouldPublish } from "./coalesce.js";
 
 function basenameOf(value) {
   if (typeof value !== "string" || value === "") return null;
@@ -36,6 +37,7 @@ export async function runTick(options) {
     sendHandshake,
     readTranscript = defaultReadTranscript,
     loadConfig = defaultLoadConfig,
+    shouldPublish = defaultShouldPublish,
     now = () => Date.now()
   } = options;
 
@@ -66,16 +68,18 @@ export async function runTick(options) {
   const transcript = await readTranscript(state.transcriptPath);
   const built = toActivityState(state, transcript);
   const activity = buildActivity(config, built, { now: now() });
-  const nextPublishAt = lastPublishAt + rateLimitMs;
 
-  if (now() - lastPublishAt < rateLimitMs) {
+  const tickNow = now();
+  const coalesce = shouldPublish({ lastPublishAt, now: tickNow, rateLimitMs });
+
+  if (!coalesce.shouldPublish) {
     return {
       activity,
       published: false,
       activeSession: state.sessionId,
       otherCount,
       shouldExit: false,
-      nextPublishAt
+      nextPublishAt: coalesce.nextPublishAt
     };
   }
 
@@ -87,7 +91,7 @@ export async function runTick(options) {
       activeSession: state.sessionId,
       otherCount,
       shouldExit: false,
-      nextPublishAt
+      nextPublishAt: coalesce.nextPublishAt
     };
   }
 
@@ -100,7 +104,7 @@ export async function runTick(options) {
     activeSession: state.sessionId,
     otherCount,
     shouldExit: false,
-    nextPublishAt: now()
+    nextPublishAt: tickNow
   };
 }
 
