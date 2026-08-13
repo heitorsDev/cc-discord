@@ -48,3 +48,25 @@ test("readTranscript picks the last title when several exist", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("readTranscript resolves pointer to message text", async () => {
+  const { dir, target } = await copyFixtureTo("with-prompt.jsonl");
+  try {
+    const result = await readTranscript(target);
+    assert.equal(result.title, "Adding Discord presence");
+    assert.equal(result.latestPrompt, "ship it");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("readTranscript returns null latestPrompt when only title exists", async () => {
+  const { dir, target } = await copyFixtureTo("no-title-with-pointer.jsonl");
+  try {
+    const result = await readTranscript(target);
+    assert.equal(result.title, null);
+    assert.equal(result.latestPrompt, "ship it");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
