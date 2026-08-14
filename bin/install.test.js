@@ -46,7 +46,10 @@ test("runInstall copies hooks into the install root and registers all three even
     assert.equal(written.hooks.UserPromptSubmit.length, 1);
     assert.equal(written.hooks.SessionEnd.length, 1);
 
-    const expected = `"${NODE_PATH}" "${join(installRoot, "src", "hooks", "session-start", "hook.js")}"`;
+    // The script segment always uses a forward slash regardless of platform
+    // (see HOOK_EVENTS in settings.js), so build the expectation the same way
+    // production does rather than joining every segment with path.join.
+    const expected = `"${NODE_PATH}" "${join(installRoot, "src", "hooks") + "/"}session-start/hook.js"`;
     assert.equal(written.hooks.SessionStart[0].hooks[0].command, expected);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -58,12 +61,17 @@ test("runInstall marks the copied hook scripts and daemon as executable", async 
   try {
     await run({ settingsPath, installRoot, packageRoot });
 
+    // Windows has no unix exec bit: chmod there only toggles the read-only
+    // attribute, so the resulting mode is never 0o755. The exec bit is a
+    // Unix-only guard anyway (Windows hooks always run through the explicit
+    // node command in settings.json), so just assert the file is writable.
+    const expectedMode = process.platform === "win32" ? 0o666 : 0o755;
     for (const { script } of HOOK_EVENTS) {
       const mode = (await stat(join(installRoot, "src", "hooks", script))).mode & 0o777;
-      assert.equal(mode, 0o755, `${script} should be executable`);
+      assert.equal(mode, expectedMode, `${script} should be executable`);
     }
     const daemonMode = (await stat(join(installRoot, "bin", "cc-discord-daemon.js"))).mode & 0o777;
-    assert.equal(daemonMode, 0o755);
+    assert.equal(daemonMode, expectedMode);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

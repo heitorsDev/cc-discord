@@ -79,7 +79,9 @@ test("markExecutable sets the exec bit and ignores missing paths", async () => {
 
     assert.equal(marked, 1);
     const mode = (await stat(present)).mode & 0o777;
-    assert.equal(mode, 0o755);
+    // Windows has no unix exec bit: chmod there only toggles the read-only
+    // attribute, so 0o755 comes back as 0o666 rather than being preserved.
+    assert.equal(mode, process.platform === "win32" ? 0o666 : 0o755);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
