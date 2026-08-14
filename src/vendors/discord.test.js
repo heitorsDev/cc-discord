@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { decodeFrame, encodeFrame } from "./discord.js";
+import { decodeFrame, encodeFrame, HEADER_SIZE, OPCODE_FRAME } from "./discord.js";
 
 const OPCODES = [0, 1, 2, 3, 4];
 
@@ -42,4 +42,25 @@ test("decodeFrame returns null on declared length exceeding buffer", () => {
   const frame = encodeFrame(1, "hi");
   frame.writeUInt32LE(999, 4);
   assert.equal(decodeFrame(frame), null);
+});
+
+test("encodeFrame declares the byte length, not the UTF-16 length", () => {
+  // "·" is one UTF-16 code unit but two UTF-8 bytes.
+  const payload = JSON.stringify({ state: "Claude Code · thinking" });
+  const frame = encodeFrame(OPCODE_FRAME, payload);
+
+  const declared = frame.readUInt32LE(4);
+  assert.equal(declared, Buffer.byteLength(payload, "utf8"));
+  assert.equal(frame.length, HEADER_SIZE + declared);
+  assert.equal(frame.subarray(HEADER_SIZE).toString("utf8"), payload);
+});
+
+test("a frame with multi-byte characters survives a round trip", () => {
+  const payload = JSON.stringify({ details: "café · naïve · 🚀", state: "ok" });
+
+  const decoded = decodeFrame(encodeFrame(OPCODE_FRAME, payload));
+
+  assert.equal(decoded.opcode, OPCODE_FRAME);
+  assert.equal(decoded.payloadString, payload);
+  assert.deepEqual(JSON.parse(decoded.payloadString), JSON.parse(payload));
 });

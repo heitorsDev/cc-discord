@@ -9,10 +9,16 @@ export const OPCODE_PONG = 4;
 export const RATE_LIMIT_MS = 15000;
 
 export function encodeFrame(opcode, payloadString) {
-  const buffer = Buffer.alloc(HEADER_SIZE + payloadString.length);
+  // The header length is a BYTE count. Using payloadString.length would count
+  // UTF-16 code units, so a single non-ASCII character (the "·" separator in
+  // the default display template, an accented project name, an emoji) declares
+  // fewer bytes than are written. Discord then parses a truncated payload and
+  // kills the connection with 1003 "Expected ',' or '}' after property value".
+  const payload = Buffer.from(payloadString, "utf8");
+  const buffer = Buffer.alloc(HEADER_SIZE + payload.length);
   buffer.writeUInt32LE(opcode, 0);
-  buffer.writeUInt32LE(payloadString.length, 4);
-  buffer.write(payloadString, HEADER_SIZE);
+  buffer.writeUInt32LE(payload.length, 4);
+  payload.copy(buffer, HEADER_SIZE);
   return buffer;
 }
 
