@@ -6,6 +6,7 @@ import { buildActivity } from "../presence/service.js";
 import {
   connectToDiscord,
   closeSocket,
+  startKeepalive,
   sendActivity as defaultSendActivity,
   sendHandshake as defaultSendHandshake
 } from "../presence/controller.js";
@@ -49,7 +50,14 @@ export async function runTick(options = {}) {
     readTranscript = defaultReadTranscript,
     loadConfig = defaultLoadConfig,
     shouldPublish = defaultShouldPublish,
-    now = () => Date.now()
+    keepalive = startKeepalive,
+    now = () => Date.now(),
+    // Discord clears a client's Rich Presence the moment its IPC socket
+    // closes, so the daemon hands the same connection back in on every tick
+    // and this function must leave it open. A caller that passes nothing keeps
+    // the self-contained connect-publish-disconnect behaviour.
+    connection = null,
+    persistent = false
   } = options;
 
   const { state, otherCount } = await selectActive(stateDir);
@@ -60,7 +68,8 @@ export async function runTick(options = {}) {
       published: false,
       activeSession: null,
       otherCount,
-      shouldExit: true
+      shouldExit: true,
+      connection
     };
   }
 
@@ -72,7 +81,8 @@ export async function runTick(options = {}) {
       activeSession: state.sessionId,
       otherCount,
       shouldExit: true,
-      error: "appIdMissing"
+      error: "appIdMissing",
+      connection
     };
   }
 
@@ -89,28 +99,62 @@ export async function runTick(options = {}) {
       activeSession: state.sessionId,
       otherCount,
       shouldExit: false,
+      // Handed straight back: a coalesced tick must not tear down the
+      // connection, or the presence it is holding up disappears.
+      connection,
       nextPublishAt: coalesce.nextPublishAt
     };
   }
 
-  const connection = await connect();
-  if (connection === null) {
+  const reusable = connection !== null && !connection.socket.destroyed;
+  const live = reusable ? connection : await connect();
+  if (live === null || live === undefined) {
     return {
       activity,
       published: false,
       activeSession: state.sessionId,
       otherCount,
       shouldExit: false,
+      connection: null,
       nextPublishAt: coalesce.nextPublishAt
     };
   }
 
-  try {
-    await sendHandshake(connection.socket, config.discord.appId);
-    await sendActivity(connection.socket, activity);
-  } finally {
-    await closeSocket(connection.socket).catch(() => {});
+  if (persistent && !reusable && live.stopKeepalive === undefined) {
+    // Discord pings a long-lived connection and drops it if nobody pongs.
+    live.stopKeepalive = keepalive(live.socket);
   }
+
+  const drop = async () => {
+    if (typeof live.stopKeepalive === "function") live.stopKeepalive();
+    await closeSocket(live.socket).catch(() => {});
+  };
+
+  try {
+    // The handshake identifies the app once per connection, not once per publish.
+    if (live.handshaked !== true) {
+      await sendHandshake(live.socket, config.discord.appId);
+      live.handshaked = true;
+    }
+    await sendActivity(live.socket, activity);
+  } catch (err) {
+    // A half-dead socket must not kill the daemon: drop it and let the next
+    // tick reconnect from scratch.
+    await drop();
+    return {
+      activity,
+      published: false,
+      activeSession: state.sessionId,
+      otherCount,
+      shouldExit: false,
+      connection: null,
+      error: "publishFailed",
+      errorMessage: err.message,
+      nextPublishAt: coalesce.nextPublishAt
+    };
+  }
+
+  if (!persistent) await drop();
 
   return {
     activity,
@@ -118,6 +162,7 @@ export async function runTick(options = {}) {
     activeSession: state.sessionId,
     otherCount,
     shouldExit: false,
+    connection: persistent ? live : null,
     nextPublishAt: tickNow
   };
 }
@@ -137,6 +182,7 @@ export async function runLoop(options = {}) {
     readTranscript = defaultReadTranscript,
     loadConfig = defaultLoadConfig,
     shouldPublish = defaultShouldPublish,
+    keepalive = startKeepalive,
     acquireLock = defaultAcquireLock,
     watchStateDir = defaultWatchStateDir,
     sleep = defaultSleep,
@@ -156,6 +202,8 @@ export async function runLoop(options = {}) {
     return wakeup;
   };
   rotateWakeup();
+
+  let connection = null;
 
   const watcher = watchStateDir(stateDir, () => {
     resolveWakeup();
@@ -182,8 +230,14 @@ export async function runLoop(options = {}) {
         readTranscript,
         loadConfig,
         shouldPublish,
-        now
+        keepalive,
+        now,
+        connection,
+        persistent: true
       });
+
+      // Carried across ticks so the presence stays up between publishes.
+      connection = result.connection ?? null;
 
       if (result.error === "appIdMissing") {
         console.error("cc-discord: discord.appId is missing in the config; exiting.");
@@ -216,6 +270,10 @@ export async function runLoop(options = {}) {
     }
   } finally {
     watcher.close();
+    if (connection !== null) {
+      if (typeof connection.stopKeepalive === "function") connection.stopKeepalive();
+      await closeSocket(connection.socket).catch(() => {});
+    }
     lock.release();
   }
 }

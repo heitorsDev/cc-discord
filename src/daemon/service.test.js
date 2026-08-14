@@ -291,7 +291,16 @@ test("runLoop publishes when a state file appears, exits after grace period when
   await writeFile(configPath, JSON.stringify({ discord: { appId: "12345" } }));
   await mkdir(stateDir, { recursive: true });
   try {
-    const fakeSocket = { _isFake: true };
+    // Realistic enough for the real keepalive and closeSocket to run against.
+    const { EventEmitter } = await import("node:events");
+    const fakeSocket = Object.assign(new EventEmitter(), {
+      _isFake: true,
+      destroyed: false,
+      write() { return true; },
+      resume() {},
+      end() { this.destroyed = true; this.emit("close"); },
+      destroy() { this.destroyed = true; this.emit("close"); }
+    });
     const handshakeAppIds = [];
     const publishedAt = [];
     let loopStarted = false;
@@ -304,9 +313,10 @@ test("runLoop publishes when a state file appears, exits after grace period when
       connect: async () => ({ socket: fakeSocket, kind: "native", path: "/tmp/fake" }),
       sendHandshake: async (_socket, appId) => {
         handshakeAppIds.push(appId);
+      },
+      sendActivity: async () => {
         publishedAt.push(Date.now());
       },
-      sendActivity: async () => {},
       watchStateDir: () => ({ close() {} }),
       acquireLock: () => {
         loopStarted = true;
@@ -327,9 +337,10 @@ test("runLoop publishes when a state file appears, exits after grace period when
     }));
     for (let i = 0; i < 100; i++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      if (handshakeAppIds.length >= 1) break;
+      if (publishedAt.length >= 1) break;
     }
-    assert.ok(handshakeAppIds.length >= 1, "daemon should publish when state file appears");
+    assert.ok(publishedAt.length >= 1, "daemon should publish when state file appears");
+    assert.equal(handshakeAppIds.length, 1, "handshake happens once per connection, not per publish");
     const firstPublishAt = publishedAt[0];
     await new Promise((resolve) => setTimeout(resolve, 50));
     const intervals = [];
@@ -339,6 +350,11 @@ test("runLoop publishes when a state file appears, exits after grace period when
     for (const gap of intervals) {
       assert.ok(gap >= 18, `coalescing: gap between publishes should respect rate limit, got ${gap}ms`);
     }
+    assert.equal(
+      handshakeAppIds.length,
+      1,
+      "the connection is reused across publishes so presence is never torn down"
+    );
     const { rm: rmFile } = await import("node:fs/promises");
     await rmFile(join(stateDir, "sess-a.json"));
     const start = Date.now();
