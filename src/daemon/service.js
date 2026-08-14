@@ -1,9 +1,14 @@
 import { RATE_LIMIT_MS } from "../vendors/discord.js";
-import { selectActive } from "../session-state/service.js";
-import { loadConfig as defaultLoadConfig } from "../config/service.js";
+import { selectActive, resolveStateDir } from "../session-state/service.js";
+import { loadConfig as defaultLoadConfig, resolveConfigPath } from "../config/service.js";
 import { readTranscript as defaultReadTranscript } from "../transcript/service.js";
 import { buildActivity } from "../presence/service.js";
-import { connectToDiscord, closeSocket } from "../presence/controller.js";
+import {
+  connectToDiscord,
+  closeSocket,
+  sendActivity as defaultSendActivity,
+  sendHandshake as defaultSendHandshake
+} from "../presence/controller.js";
 import { shouldPublish as defaultShouldPublish } from "./coalesce.js";
 import { acquireLock as defaultAcquireLock, resolveLockPath } from "./lock.js";
 import { watchStateDir as defaultWatchStateDir } from "./watch.js";
@@ -32,15 +37,15 @@ export function toActivityState(state, transcript) {
   };
 }
 
-export async function runTick(options) {
+export async function runTick(options = {}) {
   const {
-    stateDir,
-    configPath,
+    stateDir = resolveStateDir(),
+    configPath = resolveConfigPath(),
     lastPublishAt = 0,
     rateLimitMs = RATE_LIMIT_MS,
     connect = connectToDiscord,
-    sendActivity,
-    sendHandshake,
+    sendActivity = defaultSendActivity,
+    sendHandshake = defaultSendHandshake,
     readTranscript = defaultReadTranscript,
     loadConfig = defaultLoadConfig,
     shouldPublish = defaultShouldPublish,
@@ -117,16 +122,18 @@ export async function runTick(options) {
   };
 }
 
-export async function runLoop(options) {
+// The daemon launcher calls this with no arguments, so the two paths the loop
+// cannot run without have to default to their production locations here.
+export async function runLoop(options = {}) {
   const {
-    stateDir,
-    configPath,
+    stateDir = resolveStateDir(),
+    configPath = resolveConfigPath(),
     lockPath = stateDir !== undefined ? resolveLockPath(stateDir) : undefined,
     gracePeriodMs = 5000,
     rateLimitMs = RATE_LIMIT_MS,
     connect = connectToDiscord,
-    sendActivity,
-    sendHandshake,
+    sendActivity = defaultSendActivity,
+    sendHandshake = defaultSendHandshake,
     readTranscript = defaultReadTranscript,
     loadConfig = defaultLoadConfig,
     shouldPublish = defaultShouldPublish,
