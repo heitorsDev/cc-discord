@@ -179,13 +179,19 @@ export function closeSocket(socket) {
       resolve();
     };
     socket.once("close", done);
+    // Discord only emits "close" once the peer's FIN is read, and a socket
+    // nobody ever read from does not keep the event loop alive on its own. The
+    // fallback timer must therefore stay referenced: unref'd, the process could
+    // drain its handles and exit with this promise unsettled, which silently
+    // killed the daemon immediately after it published.
+    socket.resume();
     socket.end();
     setTimeout(() => {
       if (settled) return;
       settled = true;
       if (!socket.destroyed) socket.destroy();
       resolve();
-    }, 1000).unref();
+    }, 1000);
   });
 }
 
