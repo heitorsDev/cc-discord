@@ -1,0 +1,5 @@
+{"type":"title","text":"Adding Discord presence"}
+{"type":"system-event","kind":"queue-empty","detail":"idle"}
+{"type":"user-message","id":"msg-1","text":"ship it"}
+{"type":"tool-call","id":"tool-1","name":"Bash","input":"ls"}
+{"type":"current-message-pointer","messageId":"msg-1"}
