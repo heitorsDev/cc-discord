@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -48,5 +48,37 @@ test("release allows the lock to be acquired again", async () => {
     const second = acquireLock(lockPath);
     assert.notEqual(second, null);
     await second.release();
+  });
+});
+
+test("acquireLock takes over a lock whose owning process is gone", async () => {
+  await withLockDir(async (lockPath) => {
+    // A pid that cannot be running: the daemon died without releasing.
+    await writeFile(lockPath, "2147483646");
+
+    const handle = acquireLock(lockPath);
+
+    assert.notEqual(handle, null, "a stale lock must not block a new daemon");
+    assert.equal((await readFile(lockPath, "utf8")).trim(), String(process.pid));
+    await handle.release();
+  });
+});
+
+test("acquireLock takes over a lock file left empty or corrupt", async () => {
+  await withLockDir(async (lockPath) => {
+    await writeFile(lockPath, "");
+
+    const handle = acquireLock(lockPath);
+
+    assert.notEqual(handle, null);
+    await handle.release();
+  });
+});
+
+test("acquireLock still refuses a lock held by a live process", async () => {
+  await withLockDir(async (lockPath) => {
+    await writeFile(lockPath, String(process.pid));
+
+    assert.equal(acquireLock(lockPath), null);
   });
 });
